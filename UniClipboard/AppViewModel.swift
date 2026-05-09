@@ -19,6 +19,22 @@ final class AppViewModel {
         didSet { store.saveAppSettings(appSettings) }
     }
 
+    /// Last clipboard fetched from the active server. Runtime state, not
+    /// persisted — spec §5.5 doesn't list a key for it and stale data on
+    /// cold launch would mislead.
+    var serverLatest: Clipboard?
+
+    /// When `serverLatest` was last refreshed (success or 404). Reset on
+    /// every `refresh()` outcome so the UI's "5 minutes ago" label tracks
+    /// reality.
+    var lastSyncedAt: Date?
+
+    /// Last error from `refresh()`. Cleared on success.
+    var refreshError: SyncError?
+
+    /// Whether a refresh is in flight.
+    var isRefreshing: Bool = false
+
     @ObservationIgnored
     private let store: SettingsStore
 
@@ -38,6 +54,35 @@ final class AppViewModel {
 }
 
 extension AppViewModel {
+    /// Pull the active server's latest clipboard. Spec §2.1.
+    /// - 404 is the documented empty state — clears `serverLatest`,
+    ///   updates `lastSyncedAt`, leaves `refreshError` nil.
+    /// - Other errors keep the previous `serverLatest` (stale > blank)
+    ///   and surface via `refreshError`.
+    /// - No active config → spec §5.2 forbids the call; returns silently.
+    func refresh() async {
+        guard let server = servers.activeConfig else { return }
+        if isRefreshing { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        let trustInsecure = appSettings.trustInsecureCert
+        do {
+            let client = try SyncClipboardClient(server: server, trustInsecureCert: trustInsecure)
+            let clip = try await client.getClipboard()
+            serverLatest = clip
+            lastSyncedAt = .now
+            refreshError = nil
+        } catch let e as SyncError where e.kind == .notFound {
+            serverLatest = nil
+            lastSyncedAt = .now
+            refreshError = nil
+        } catch let e as SyncError {
+            refreshError = e
+        } catch {
+            refreshError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
+        }
+    }
+
     /// Builds a VM bound to an isolated `UserDefaults` suite — for use in
     /// `#Preview` blocks so previews don't read or write `.standard`.
     static func preview(

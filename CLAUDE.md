@@ -63,6 +63,27 @@ Pass per-launch env via `SIMCTL_CHILD_<NAME>=value`. Locale via `-AppleLanguages
 
 These hooks are only present so the design can be inspected without an interactive simulator (simctl has no synthetic-tap API). Not feature flags; remove on the day this becomes a real product.
 
+### Local stub server
+
+`scripts/sync-stub-server.py` is a tiny stdlib-only HTTP stub that speaks just enough of the protocol to drive the iOS read path. The 200-mode body is byte-identical to `docs/examples/clipboard_text_short.json`, so any drift between the spec and the stub will surface immediately in the model fixture tests.
+
+```bash
+scripts/sync-stub-server.py                  # 200 + Hello, SyncClipboard!
+STUB_MODE=401 scripts/sync-stub-server.py    # any int → that HTTP status
+STUB_PORT=9000 scripts/sync-stub-server.py
+```
+
+To point a configured iOS simulator at the stub from outside the app, write the value as `Data` (SettingsStore reads `Data`, not `String`) and clear any legacy `server_config` first — otherwise §5.5 migration kicks in and overwrites the new key:
+
+```bash
+SCL='{"configs":[{"id":"stub","url":"http://127.0.0.1:8033/","username":"u","password":"p","autoSwitchWifiNames":[]}],"activeConfigId":"stub"}'
+HEX=$(printf '%s' "$SCL" | xxd -p | tr -d '\n')
+xcrun simctl spawn booted defaults delete app.uniclipboard.UniClipboard server_config 2>/dev/null
+xcrun simctl spawn booted defaults write  app.uniclipboard.UniClipboard server_config_list -data "$HEX"
+```
+
+iOS 14+ ATS lets `127.0.0.1` through without an Info.plist exception, so plain HTTP works against the stub from the simulator.
+
 ## Architecture
 
 ```

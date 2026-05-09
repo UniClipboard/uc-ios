@@ -14,6 +14,7 @@ let package = Package(
     ],
     products: [
         .library(name: "UniClipboardModels", targets: ["UniClipboardModels"]),
+        .library(name: "UniClipboardNetwork", targets: ["UniClipboardNetwork"]),
     ],
     targets: [
         .target(
@@ -27,6 +28,16 @@ let package = Package(
             // Fixtures are not copied as bundle resources — the test loads them
             // directly from `docs/examples/` via #file, so any edits to the
             // fixtures land in the next test run with no sync step.
+        ),
+        .target(
+            name: "UniClipboardNetwork",
+            dependencies: ["UniClipboardModels"],
+            path: "UniClipboard/Network"
+        ),
+        .testTarget(
+            name: "UniClipboardNetworkTests",
+            dependencies: ["UniClipboardNetwork", "UniClipboardModels"],
+            path: "Tests/UniClipboardNetworkTests"
         ),
     ]
 )

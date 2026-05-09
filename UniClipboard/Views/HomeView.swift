@@ -4,14 +4,12 @@ import SwiftUI
 /// floating accessory for the primary push action.
 struct HomeView: View {
     @Bindable var vm: AppViewModel
-    var serverLatest: Clipboard?
-    var serverLastSyncedAt: Date?
     var deviceClipboard: Clipboard?
 
     @State private var lastPushedAt: Date?
 
     private var inSync: Bool {
-        guard let s = serverLatest, let d = deviceClipboard else { return false }
+        guard let s = vm.serverLatest, let d = deviceClipboard else { return false }
         return Clipboard.hashMatches(expected: s.hash, actual: d.hash ?? "")
             && s.hash != nil && d.hash != nil
     }
@@ -19,9 +17,13 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if let err = vm.refreshError {
+                    refreshErrorRow(err)
+                }
+
                 ServerSnapshotCard(
-                    entry: serverLatest,
-                    lastSyncedAt: serverLastSyncedAt
+                    entry: vm.serverLatest,
+                    lastSyncedAt: vm.lastSyncedAt
                 )
 
                 connector
@@ -36,6 +38,7 @@ struct HomeView: View {
             .padding(.top, 8)
             .padding(.bottom, 110) // leave room for the floating bar
         }
+        .refreshable { await vm.refresh() }
         .scrollContentBackground(.hidden)
         .background(Color(.systemGroupedBackground))
         .navigationTitle("剪贴板")
@@ -50,10 +53,15 @@ struct HomeView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    // pull-to-refresh placeholder
+                    Task { await vm.refresh() }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
+                    if vm.isRefreshing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
                 }
+                .disabled(vm.isRefreshing)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -66,6 +74,36 @@ struct HomeView: View {
             )
             .padding(.horizontal, 16)
             .padding(.bottom, 6)
+        }
+    }
+
+    @ViewBuilder
+    private func refreshErrorRow(_ err: SyncError) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(errorMessage(err))
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func errorMessage(_ err: SyncError) -> String {
+        switch err.kind {
+        case .authFailed:                return String(localized: "认证失败 — 请检查用户名和密码")
+        case .connectTimeout:            return String(localized: "连接超时 — 请检查服务器地址")
+        case .receiveTimeout:            return String(localized: "接收超时 — 请稍后重试")
+        case .networkUnreachable:        return String(localized: "无法连接 — 请检查网络和 URL")
+        case .invalidURL:                return String(localized: "服务器地址无效")
+        case .decodingFailed:            return String(localized: "服务器返回的数据无法解析")
+        case .protocolError(let code):   return String(localized: "服务器返回 HTTP \(code)")
+        case .serverError(let code):     return String(localized: "服务器错误 \(code)")
+        case .notFound:                  return String(localized: "服务器尚未发布剪贴板")
         }
     }
 
@@ -352,12 +390,17 @@ private func formatSize(_ size: Int, kind: Clipboard.Kind) -> String {
 
 // MARK: - Preview
 
+private func previewVM(serverLatest: Clipboard?, lastSyncedAt: Date?) -> AppViewModel {
+    let vm = AppViewModel.preview()
+    vm.serverLatest = serverLatest
+    vm.lastSyncedAt = lastSyncedAt
+    return vm
+}
+
 #Preview("Home — 不一致") {
     NavigationStack {
         HomeView(
-            vm: .preview(),
-            serverLatest: Mock.serverLatest,
-            serverLastSyncedAt: Mock.serverLastSyncedAt,
+            vm: previewVM(serverLatest: Mock.serverLatest, lastSyncedAt: Mock.serverLastSyncedAt),
             deviceClipboard: Mock.deviceClipboard
         )
     }
@@ -367,9 +410,7 @@ private func formatSize(_ size: Int, kind: Clipboard.Kind) -> String {
 #Preview("Home — 已同步") {
     NavigationStack {
         HomeView(
-            vm: .preview(),
-            serverLatest: Mock.serverLatest,
-            serverLastSyncedAt: Mock.serverLastSyncedAt,
+            vm: previewVM(serverLatest: Mock.serverLatest, lastSyncedAt: Mock.serverLastSyncedAt),
             deviceClipboard: Mock.serverLatest
         )
     }
@@ -379,9 +420,7 @@ private func formatSize(_ size: Int, kind: Clipboard.Kind) -> String {
 #Preview("Home — 服务器空") {
     NavigationStack {
         HomeView(
-            vm: .preview(),
-            serverLatest: nil,
-            serverLastSyncedAt: nil,
+            vm: previewVM(serverLatest: nil, lastSyncedAt: nil),
             deviceClipboard: Mock.deviceClipboard
         )
     }

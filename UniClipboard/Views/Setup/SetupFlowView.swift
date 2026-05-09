@@ -246,22 +246,43 @@ private struct ServerFormStepView: View {
     }
 
     private func runTest() async {
-        test = .connecting
-        try? await Task.sleep(for: .milliseconds(1100))
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedURL.isEmpty || username.isEmpty || password.isEmpty {
             test = .missingFields
             return
         }
-        if !trimmedURL.contains("://") || trimmedURL.contains("unreachable") {
+        test = .connecting
+
+        let probe = ServerConfig(
+            id: "probe",
+            url: trimmedURL,
+            username: username,
+            password: password
+        )
+        let client: SyncClipboardClient
+        do {
+            client = try SyncClipboardClient(server: probe, trustInsecureCert: trustInsecure)
+        } catch {
             test = .unreachable
             return
         }
-        if username.lowercased() == "wrong" || password.lowercased() == "wrong" {
-            test = .authFailed
-            return
+        do {
+            _ = try await client.getClipboard()
+            test = .success
+        } catch let e as SyncError {
+            switch e.kind {
+            case .notFound:
+                // Spec §2.1: 404 means "no clipboard published yet" — server
+                // reachable + auth OK is what the user is testing.
+                test = .success
+            case .authFailed:
+                test = .authFailed
+            default:
+                test = .unreachable
+            }
+        } catch {
+            test = .unreachable
         }
-        test = .success
     }
 }
 

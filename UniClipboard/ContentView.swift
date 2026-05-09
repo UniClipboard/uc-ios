@@ -29,10 +29,9 @@ struct ContentView: View {
                 NavigationStack {
                     HomeView(
                         vm: vm,
-                        serverLatest: Mock.serverLatest,
-                        serverLastSyncedAt: Mock.serverLastSyncedAt,
                         deviceClipboard: Mock.deviceClipboard
                     )
+                    .task { await vm.refresh() }
                 }
             }
             Tab("历史", systemImage: "clock.fill", value: 1) {
