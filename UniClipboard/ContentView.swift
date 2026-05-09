@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var servers: ServerConfigList = Mock.servers
+    @State private var servers: ServerConfigList = Self.initialServers
     @State private var appSettings: AppSettings = AppSettings(
         manualUploadDialogShown: true,
         downloadRelativePath: "SyncClipboard/Inbox",
@@ -16,7 +16,25 @@ struct ContentView: View {
         return max(0, min(2, i))
     }
 
+    private static var initialServers: ServerConfigList {
+        if ProcessInfo.processInfo.environment["UC_FRESH"] == "1" {
+            return ServerConfigList()
+        }
+        return Mock.servers
+    }
+
     var body: some View {
+        if servers.configs.isEmpty {
+            SetupFlowView(servers: $servers) {
+                // No-op: ContentView re-renders to TabView once configs is non-empty.
+            }
+            .tint(.indigo)
+        } else {
+            mainTabs
+        }
+    }
+
+    private var mainTabs: some View {
         TabView(selection: $selection) {
             Tab("剪贴板", systemImage: "doc.on.clipboard.fill", value: 0) {
                 NavigationStack {

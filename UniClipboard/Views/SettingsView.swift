@@ -209,8 +209,8 @@ private struct AboutView: View {
     var body: some View {
         List {
             Section {
-                LabeledContent("版本", value: "1.0 (1)")
-                LabeledContent("协议", value: "SyncClipboard v1")
+                LabeledContent("版本", value: "UniClipboard 1.0 (1)")
+                LabeledContent("协议", value: "兼容 SyncClipboard v1")
             }
             if let v = appSettings.ignoredVersion {
                 Section("忽略的版本") {

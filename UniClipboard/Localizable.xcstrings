@@ -464,6 +464,198 @@
           "stringUnit" : { "state" : "translated", "value" : "Diagnostics" }
         }
       }
+    },
+    "和其他设备共享剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Share Clipboard with Other Devices" }
+        }
+      }
+    },
+    "通过 UniClipboard 服务器同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Synced through your UniClipboard server" }
+        }
+      }
+    },
+    "开始配置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Get Started" }
+        }
+      }
+    },
+    "我还没有服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "I don't have a server" }
+        }
+      }
+    },
+    "服务器配置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Server Configuration" }
+        }
+      }
+    },
+    "服务器地址" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Server Address" }
+        }
+      }
+    },
+    "局域网或自签名证书时勾选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Enable for LAN or self-signed certificates" }
+        }
+      }
+    },
+    "凭据" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Credentials" }
+        }
+      }
+    },
+    "连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Connection" }
+        }
+      }
+    },
+    "正在连接…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Connecting…" }
+        }
+      }
+    },
+    "继续" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Continue" }
+        }
+      }
+    },
+    "已连接 — 服务器可达" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Connected — server is reachable" }
+        }
+      }
+    },
+    "认证失败 — 检查用户名和密码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Authentication failed — check username and password" }
+        }
+      }
+    },
+    "无法连接 — 检查 URL 和网络" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Unable to connect — check URL and network" }
+        }
+      }
+    },
+    "请填写 URL、用户名和密码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Fill in URL, username, and password" }
+        }
+      }
+    },
+    "自动切换 WiFi" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Auto-switch on WiFi" }
+        }
+      }
+    },
+    "在指定 WiFi 下自动启用此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Optionally activate this server on specific networks. You can change this later in Settings → Servers." }
+        }
+      }
+    },
+    "当前网络" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Current Network" }
+        }
+      }
+    },
+    "添加" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Add" }
+        }
+      }
+    },
+    "已添加" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Added" }
+        }
+      }
+    },
+    "已添加的 WiFi" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Added WiFi Networks" }
+        }
+      }
+    },
+    "完成" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Done" }
+        }
+      }
+    },
+    "稍后设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Set Up Later" }
+        }
+      }
+    },
+    "兼容 SyncClipboard v1" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "SyncClipboard v1 compatible" }
+        }
+      }
     }
   }
 }
