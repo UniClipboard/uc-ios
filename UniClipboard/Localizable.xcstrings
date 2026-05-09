@@ -1,0 +1,469 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "version" : "1.0",
+  "strings" : {
+    "%lld 个" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "%lld total" }
+        }
+      }
+    },
+    "%lld 字" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "%lld characters" }
+        }
+      }
+    },
+    "%lld 字符" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "%lld characters" }
+        }
+      }
+    },
+    "Pulled clipboard from server (%lld min ago)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Pulled clipboard from server (%lld min ago)" }
+        },
+        "zh-Hans" : {
+          "stringUnit" : { "state" : "translated", "value" : "已从服务器拉取（%lld 分钟前）" }
+        }
+      }
+    },
+    "URL" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "上次推送 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Last pushed %@" }
+        }
+      }
+    },
+    "下载子目录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Download Subdirectory" }
+        }
+      }
+    },
+    "下载路径" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Download Path" }
+        }
+      }
+    },
+    "（未命名）" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "(Unnamed)" }
+        }
+      }
+    },
+    "中—— BEGIN LONG NOTE ——" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "仅本机缓存。服务器只保留最新一份。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Cached on this device only. The server keeps just the latest item." }
+        }
+      }
+    },
+    "从下方推送你的第一份内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Push your first item from the bar below." }
+        }
+      }
+    },
+    "从文件导入" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Import from File" }
+        }
+      }
+    },
+    "保存" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Save" }
+        }
+      }
+    },
+    "允许不安全证书" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Trust Insecure Certificate" }
+        }
+      }
+    },
+    "关于" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "About" }
+        }
+      }
+    },
+    "其他" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Clipboard" }
+        }
+      }
+    },
+    "协议" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Protocol" }
+        }
+      }
+    },
+    "历史" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "History" }
+        }
+      }
+    },
+    "图片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Image" }
+        }
+      }
+    },
+    "基本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Basics" }
+        }
+      }
+    },
+    "归档" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Archive" }
+        }
+      }
+    },
+    "应用" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Apply" }
+        }
+      }
+    },
+    "应用到本机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Apply to Device" }
+        }
+      }
+    },
+    "已同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Synced" }
+        }
+      }
+    },
+    "忽略的版本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Ignored Version" }
+        }
+      }
+    },
+    "测试连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Test Connection" }
+        }
+      }
+    },
+    "无" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "None" }
+        }
+      }
+    },
+    "无法读取本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Unable to read device clipboard." }
+        }
+      }
+    },
+    "日志" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Logs" }
+        }
+      }
+    },
+    "最近 %lld 条" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Last %lld items" }
+        }
+      }
+    },
+    "服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Server" }
+        }
+      }
+    },
+    "服务器列表" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Servers" }
+        }
+      }
+    },
+    "服务器还没有发布过剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "The server hasn't published anything yet." }
+        }
+      }
+    },
+    "本机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Device" }
+        }
+      }
+    },
+    "本机与服务器一致" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Device matches server." }
+        }
+      }
+    },
+    "本机与服务器不一致 · 可推送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Device differs from server · ready to push." }
+        }
+      }
+    },
+    "未配置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Not configured" }
+        }
+      }
+    },
+    "管理服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Manage Servers" }
+        }
+      }
+    },
+    "用户名" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Username" }
+        }
+      }
+    },
+    "添加服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Add Server" }
+        }
+      }
+    },
+    "清除" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Clear" }
+        }
+      }
+    },
+    "版本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Version" }
+        }
+      }
+    },
+    "推送当前剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Push Current Clipboard" }
+        }
+      }
+    },
+    "文件" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "File" }
+        }
+      }
+    },
+    "文本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Text" }
+        }
+      }
+    },
+    "删除" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Delete" }
+        }
+      }
+    },
+    "默认" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Default" }
+        }
+      }
+    },
+    "密码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Password" }
+        }
+      }
+    },
+    "同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Sync" }
+        }
+      }
+    },
+    "启动时检查更新" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Check for updates at launch" }
+        }
+      }
+    },
+    "名称" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Name" }
+        }
+      }
+    },
+    "自动切换" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Auto-switch" }
+        }
+      }
+    },
+    "自动切换：连接到匹配 SSID 时自动切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Auto-switch: when connected to a matching SSID, that server becomes active automatically." }
+        }
+      }
+    },
+    "行为" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Behavior" }
+        }
+      }
+    },
+    "设为活动" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Set Active" }
+        }
+      }
+    },
+    "设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Settings" }
+        }
+      }
+    },
+    "诊断" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Diagnostics" }
+        }
+      }
+    }
+  }
+}

@@ -1,21 +1,45 @@
-//
-//  ContentView.swift
-//  UniClipboard
-//
-//  Created by mark on 2026/5/9.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+    @State private var servers: ServerConfigList = Mock.servers
+    @State private var appSettings: AppSettings = AppSettings(
+        manualUploadDialogShown: true,
+        downloadRelativePath: "SyncClipboard/Inbox",
+        ignoredVersion: "0.3.2"
+    )
+    @State private var selection: Int = Self.initialTab
+
+    private static var initialTab: Int {
+        guard let i = ProcessInfo.processInfo.environment["UC_INIT_TAB"].flatMap(Int.init) else {
+            return 0
         }
-        .padding()
+        return max(0, min(2, i))
+    }
+
+    var body: some View {
+        TabView(selection: $selection) {
+            Tab("剪贴板", systemImage: "doc.on.clipboard.fill", value: 0) {
+                NavigationStack {
+                    HomeView(
+                        servers: $servers,
+                        serverLatest: Mock.serverLatest,
+                        serverLastSyncedAt: Mock.serverLastSyncedAt,
+                        deviceClipboard: Mock.deviceClipboard
+                    )
+                }
+            }
+            Tab("历史", systemImage: "clock.fill", value: 1) {
+                NavigationStack {
+                    HistoryView()
+                }
+            }
+            Tab("设置", systemImage: "gearshape.fill", value: 2) {
+                NavigationStack {
+                    SettingsView(servers: $servers, appSettings: $appSettings)
+                }
+            }
+        }
+        .tint(.indigo)
     }
 }
 
