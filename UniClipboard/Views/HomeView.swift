@@ -3,7 +3,7 @@ import SwiftUI
 /// Home tab — the focal point. Two cards (Server vs Device) and a bottom
 /// floating accessory for the primary push action.
 struct HomeView: View {
-    @Binding var servers: ServerConfigList
+    @Bindable var vm: AppViewModel
     var serverLatest: Clipboard?
     var serverLastSyncedAt: Date?
     var deviceClipboard: Clipboard?
@@ -43,9 +43,9 @@ struct HomeView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 ServerChip(
-                    activeServer: servers.activeConfig,
-                    allServers: servers.configs,
-                    onSelect: { id in servers.activeConfigId = id }
+                    activeServer: vm.servers.activeConfig,
+                    allServers: vm.servers.configs,
+                    onSelect: { id in vm.servers.activeConfigId = id }
                 )
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -58,11 +58,11 @@ struct HomeView: View {
         }
         .safeAreaInset(edge: .bottom) {
             PushAccessoryBar(
-                activeServer: servers.activeConfig,
-                allServers: servers.configs,
+                activeServer: vm.servers.activeConfig,
+                allServers: vm.servers.configs,
                 canPush: !inSync && deviceClipboard != nil,
                 onPush: { lastPushedAt = .now },
-                onSelectServer: { id in servers.activeConfigId = id }
+                onSelectServer: { id in vm.servers.activeConfigId = id }
             )
             .padding(.horizontal, 16)
             .padding(.bottom, 6)
@@ -353,10 +353,9 @@ private func formatSize(_ size: Int, kind: Clipboard.Kind) -> String {
 // MARK: - Preview
 
 #Preview("Home — 不一致") {
-    @Previewable @State var servers = Mock.servers
     NavigationStack {
         HomeView(
-            servers: $servers,
+            vm: .preview(),
             serverLatest: Mock.serverLatest,
             serverLastSyncedAt: Mock.serverLastSyncedAt,
             deviceClipboard: Mock.deviceClipboard
@@ -366,10 +365,9 @@ private func formatSize(_ size: Int, kind: Clipboard.Kind) -> String {
 }
 
 #Preview("Home — 已同步") {
-    @Previewable @State var servers = Mock.servers
     NavigationStack {
         HomeView(
-            servers: $servers,
+            vm: .preview(),
             serverLatest: Mock.serverLatest,
             serverLastSyncedAt: Mock.serverLastSyncedAt,
             deviceClipboard: Mock.serverLatest
@@ -379,10 +377,9 @@ private func formatSize(_ size: Int, kind: Clipboard.Kind) -> String {
 }
 
 #Preview("Home — 服务器空") {
-    @Previewable @State var servers = Mock.servers
     NavigationStack {
         HomeView(
-            servers: $servers,
+            vm: .preview(),
             serverLatest: nil,
             serverLastSyncedAt: nil,
             deviceClipboard: Mock.deviceClipboard

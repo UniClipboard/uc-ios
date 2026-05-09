@@ -1,35 +1,34 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Binding var servers: ServerConfigList
-    @Binding var appSettings: AppSettings
+    @Bindable var vm: AppViewModel
 
     var body: some View {
         List {
             Section("同步") {
                 NavigationLink {
-                    ServersListView(servers: $servers)
+                    ServersListView(servers: $vm.servers)
                 } label: {
                     HStack {
                         Label("服务器列表", systemImage: "server.rack")
                         Spacer()
-                        Text("\(servers.configs.count) 个")
+                        Text("\(vm.servers.configs.count) 个")
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Toggle(isOn: $appSettings.trustInsecureCert) {
+                Toggle(isOn: $vm.appSettings.trustInsecureCert) {
                     Label("允许不安全证书", systemImage: "lock.open")
                 }
             }
 
             Section("行为") {
-                Toggle(isOn: $appSettings.autoCheckUpdate) {
+                Toggle(isOn: $vm.appSettings.autoCheckUpdate) {
                     Label("启动时检查更新", systemImage: "arrow.triangle.2.circlepath")
                 }
                 NavigationLink {
                     Form {
-                        TextField("下载子目录", text: $appSettings.downloadRelativePath)
+                        TextField("下载子目录", text: $vm.appSettings.downloadRelativePath)
                             .textInputAutocapitalization(.never)
                     }
                     .navigationTitle("下载路径")
@@ -37,7 +36,7 @@ struct SettingsView: View {
                     HStack {
                         Label("下载路径", systemImage: "folder")
                         Spacer()
-                        Text(appSettings.downloadRelativePath.isEmpty ? "默认" : appSettings.downloadRelativePath)
+                        Text(vm.appSettings.downloadRelativePath.isEmpty ? "默认" : vm.appSettings.downloadRelativePath)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -51,7 +50,7 @@ struct SettingsView: View {
                     Label("日志", systemImage: "doc.text.magnifyingglass")
                 }
                 NavigationLink {
-                    AboutView(appSettings: $appSettings)
+                    AboutView(appSettings: $vm.appSettings)
                 } label: {
                     Label("关于", systemImage: "info.circle")
                 }
@@ -228,14 +227,8 @@ private struct AboutView: View {
 }
 
 #Preview {
-    @Previewable @State var servers = Mock.servers
-    @Previewable @State var settings = AppSettings(
-        manualUploadDialogShown: true,
-        downloadRelativePath: "SyncClipboard/Inbox",
-        ignoredVersion: "0.3.2"
-    )
     NavigationStack {
-        SettingsView(servers: $servers, appSettings: $settings)
+        SettingsView(vm: .preview())
     }
     .tint(.indigo)
 }

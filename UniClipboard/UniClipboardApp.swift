@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct UniClipboardApp: App {
+    @State private var vm = AppViewModel()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(vm: vm)
         }
     }
 }

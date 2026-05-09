@@ -1,24 +1,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    private let store: SettingsStore
+    @Bindable var vm: AppViewModel
 
-    @State private var servers: ServerConfigList
-    @State private var appSettings: AppSettings
-    @State private var selection: Int
-
-    init(store: SettingsStore = SettingsStore()) {
-        self.store = store
-
-        let bootServers: ServerConfigList =
-            ProcessInfo.processInfo.environment["UC_FRESH"] == "1"
-            ? ServerConfigList()
-            : store.loadServers()
-
-        _servers = State(initialValue: bootServers)
-        _appSettings = State(initialValue: store.loadAppSettings())
-        _selection = State(initialValue: Self.initialTab)
-    }
+    @State private var selection: Int = Self.initialTab
 
     private static var initialTab: Int {
         guard let i = ProcessInfo.processInfo.environment["UC_INIT_TAB"].flatMap(Int.init) else {
@@ -28,19 +13,8 @@ struct ContentView: View {
     }
 
     var body: some View {
-        rootContent
-            .onChange(of: servers) { _, newValue in
-                store.saveServers(newValue)
-            }
-            .onChange(of: appSettings) { _, newValue in
-                store.saveAppSettings(newValue)
-            }
-    }
-
-    @ViewBuilder
-    private var rootContent: some View {
-        if servers.configs.isEmpty {
-            SetupFlowView(servers: $servers) {
+        if vm.servers.configs.isEmpty {
+            SetupFlowView(vm: vm) {
                 // No-op: ContentView re-renders to TabView once configs is non-empty.
             }
             .tint(.indigo)
@@ -54,7 +28,7 @@ struct ContentView: View {
             Tab("剪贴板", systemImage: "doc.on.clipboard.fill", value: 0) {
                 NavigationStack {
                     HomeView(
-                        servers: $servers,
+                        vm: vm,
                         serverLatest: Mock.serverLatest,
                         serverLastSyncedAt: Mock.serverLastSyncedAt,
                         deviceClipboard: Mock.deviceClipboard
@@ -68,7 +42,7 @@ struct ContentView: View {
             }
             Tab("设置", systemImage: "gearshape.fill", value: 2) {
                 NavigationStack {
-                    SettingsView(servers: $servers, appSettings: $appSettings)
+                    SettingsView(vm: vm)
                 }
             }
         }
@@ -77,5 +51,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(vm: .preview())
 }

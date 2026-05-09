@@ -11,7 +11,7 @@ import SwiftUI
 /// - `UC_PREFILL_TEST=success|authFailed|unreachable|missingFields`
 ///                                → seed the test-connection result
 struct SetupFlowView: View {
-    @Binding var servers: ServerConfigList
+    @Bindable var vm: AppViewModel
     var onComplete: () -> Void
 
     @State private var path: [Step] = Step.initialPath()
@@ -51,7 +51,7 @@ struct SetupFlowView: View {
                             url: url,
                             username: username,
                             password: password,
-                            servers: $servers,
+                            servers: $vm.servers,
                             onComplete: onComplete
                         )
                     }
@@ -382,6 +382,5 @@ private enum SetupPrefill {
 }
 
 #Preview("Welcome") {
-    @Previewable @State var servers = ServerConfigList()
-    SetupFlowView(servers: $servers) {}
+    SetupFlowView(vm: .preview(servers: ServerConfigList())) {}
 }
