@@ -20,11 +20,21 @@ struct HomeView: View {
                 if let err = vm.pushError {
                     errorRow(err, prefix: String(localized: "推送失败:"))
                 }
+                if let err = vm.applyError {
+                    errorRow(err, prefix: String(localized: "应用失败:"))
+                }
+                if let err = vm.saveError {
+                    errorRow(err, prefix: String(localized: "保存失败:"))
+                }
 
                 ServerSnapshotCard(
                     entry: vm.serverLatest,
                     lastSyncedAt: vm.lastSyncedAt,
-                    onApply: { vm.applyServerToDevice() }
+                    isApplying: vm.isApplying,
+                    isSaving: vm.isSaving,
+                    lastSavedFileURL: vm.lastSavedFileURL,
+                    onApply: { Task { await vm.applyServerToDevice() } },
+                    onSave:  { Task { await vm.saveServerAttachment() } }
                 )
 
                 connector
@@ -110,6 +120,7 @@ struct HomeView: View {
         case .protocolError(let code):   return String(localized: "服务器返回 HTTP \(code)")
         case .serverError(let code):     return String(localized: "服务器错误 \(code)")
         case .notFound:                  return String(localized: "服务器尚未发布剪贴板")
+        case .hashMismatch:              return String(localized: "内容校验失败 — 文件可能损坏")
         }
     }
 
@@ -146,14 +157,27 @@ struct HomeView: View {
 private struct ServerSnapshotCard: View {
     let entry: Clipboard?
     let lastSyncedAt: Date?
+    let isApplying: Bool
+    let isSaving: Bool
+    let lastSavedFileURL: URL?
     let onApply: () -> Void
+    let onSave: () -> Void
 
-    /// Apply-to-device only handles short text this cycle. For long text
-    /// (`hasData=true`) and image/file/group, we'd need §2.4 GET file
-    /// to recover the payload — out of scope.
+    /// Apply means "write to device pasteboard". Both inline and overflow
+    /// text variants work — overflow downloads the §2.4 payload first.
+    /// Image/file/group entries need UTI handling that pairs with the
+    /// image-push cycle; out of scope here.
     private var canApply: Bool {
         guard let e = entry else { return false }
-        return e.type == .text && !e.hasData
+        return e.type == .text
+    }
+
+    /// Save means "write the payload to Documents". Image and file are
+    /// supported this cycle; Group disabled until §4.3 ZIP-traversal hash
+    /// has its own slice.
+    private var canSave: Bool {
+        guard let e = entry else { return false }
+        return e.hasData && (e.type == .image || e.type == .file)
     }
 
     var body: some View {
@@ -181,24 +205,44 @@ private struct ServerSnapshotCard: View {
                         Button {
                             onApply()
                         } label: {
-                            Label("应用到本机", systemImage: "arrow.down.to.line")
-                                .frame(maxWidth: .infinity)
+                            HStack(spacing: 6) {
+                                if isApplying {
+                                    ProgressView().controlSize(.small)
+                                    Text("正在应用…")
+                                } else {
+                                    Image(systemName: "arrow.down.to.line")
+                                    Text("应用到本机")
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
-                        .disabled(!canApply)
+                        .disabled(!canApply || isApplying)
 
                         if entry.hasData {
                             Button {
-                                // save attachment — needs §2.4 GET file, out of scope
+                                onSave()
                             } label: {
-                                Label("保存", systemImage: "square.and.arrow.down")
-                                    .frame(maxWidth: .infinity)
+                                HStack(spacing: 6) {
+                                    if isSaving {
+                                        ProgressView().controlSize(.small)
+                                        Text("正在保存…")
+                                    } else {
+                                        Image(systemName: "square.and.arrow.down")
+                                        Text("保存")
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.large)
-                            .disabled(true)
+                            .disabled(!canSave || isSaving)
                         }
+                    }
+
+                    if let savedURL = lastSavedFileURL {
+                        savedToCaption(url: savedURL)
                     }
                 }
             } else {
@@ -259,6 +303,22 @@ private struct ServerSnapshotCard: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.tertiary)
             }
+        }
+    }
+
+    /// "已保存到 …/<dataName>" line under the action row. Sticky until
+    /// the next save attempt or a refresh — `AppViewModel` clears it.
+    private func savedToCaption(url: URL) -> some View {
+        let leaf = url.pathComponents.suffix(2).joined(separator: "/")
+        return HStack(spacing: 6) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .foregroundStyle(.green)
+            Text("已保存到 \(leaf)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
         }
     }
 

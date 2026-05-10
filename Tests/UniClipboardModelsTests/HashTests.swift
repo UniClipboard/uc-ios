@@ -57,4 +57,37 @@ final class HashTests: XCTestCase {
         XCTAssertNil(c.dataName)
         XCTAssertEqual(c.hash, Clipboard.computeTextHash(long))
     }
+
+    // MARK: - computeBytesHash (§4.2)
+
+    func test_H6_computeBytesHash_emptyData_matchesKnownSHA256() {
+        XCTAssertEqual(
+            Clipboard.computeBytesHash(Data()),
+            "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        )
+    }
+
+    func test_H7_computeBytesHash_abc_matchesNISTTestVector() {
+        // FIPS 180-2 test vector for SHA-256 of the three-byte string "abc".
+        XCTAssertEqual(
+            Clipboard.computeBytesHash(Data("abc".utf8)),
+            "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD"
+        )
+    }
+
+    /// Parity invariant the text-overflow download verifier relies on:
+    /// `computeBytesHash(Data(text.utf8)) == computeTextHash(text)`. Without
+    /// this equality, downloading the file payload of a text-overflow entry
+    /// and hashing the bytes would not match the metadata's `hash` field
+    /// (which is the §4.1 text hash). Both must compute SHA-256 of the same
+    /// UTF-8 bytes — same input, same digest.
+    func test_H8_computeBytesHash_matchesComputeTextHash_forSameUTF8() {
+        for sample in ["hello, world", "你好,世界", "", "🍎🍌"] {
+            XCTAssertEqual(
+                Clipboard.computeBytesHash(Data(sample.utf8)),
+                Clipboard.computeTextHash(sample),
+                "parity broken for \(sample.debugDescription)"
+            )
+        }
+    }
 }

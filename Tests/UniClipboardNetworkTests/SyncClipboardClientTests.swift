@@ -270,6 +270,74 @@ final class SyncClipboardClientTests: XCTestCase {
         }
     }
 
+    // MARK: - GET file/<name> (§2.4)
+
+    private func bytesHandler(_ bytes: Data, status: Int = 200) -> MockURLProtocol.Handler {
+        { req in
+            let resp = HTTPURLResponse(url: req.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (resp, bytes)
+        }
+    }
+
+    func test_G1_getFile_usesGET_atFilePath_withAuth() async throws {
+        MockURLProtocol.handler = bytesHandler(Data())
+        let client = try makeClient(baseURLString: "https://nas.local:5033/", username: "alice", password: "secret")
+        _ = try await client.getFile(name: "text_ABC.txt")
+        XCTAssertEqual(MockURLProtocol.lastRequest?.httpMethod, "GET")
+        XCTAssertEqual(MockURLProtocol.lastRequest?.url?.absoluteString,
+                       "https://nas.local:5033/file/text_ABC.txt")
+        XCTAssertEqual(
+            MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"),
+            "Basic YWxpY2U6c2VjcmV0"
+        )
+    }
+
+    func test_G2_getFile_returnsResponseBytesVerbatim() async throws {
+        let payload = Data((0..<256).map { UInt8($0) })
+        MockURLProtocol.handler = bytesHandler(payload)
+        let received = try await makeClient().getFile(name: "blob.bin")
+        XCTAssertEqual(received, payload)
+    }
+
+    func test_G3a_getFile_returns401AsAuthFailed() async {
+        MockURLProtocol.handler = bytesHandler(Data(), status: 401)
+        await assertThrowsKind(.authFailed) {
+            _ = try await self.makeClient().getFile(name: "x.bin")
+        }
+    }
+
+    func test_G3b_getFile_returns404AsNotFound() async {
+        MockURLProtocol.handler = bytesHandler(Data(), status: 404)
+        await assertThrowsKind(.notFound) {
+            _ = try await self.makeClient().getFile(name: "x.bin")
+        }
+    }
+
+    func test_G3c_getFile_returns500AsServerError() async {
+        MockURLProtocol.handler = bytesHandler(Data(), status: 500)
+        await assertThrowsKind(.serverError(500)) {
+            _ = try await self.makeClient().getFile(name: "x.bin")
+        }
+    }
+
+    func test_G4_getFile_rejectsBadFilenamesBeforeNetworkCall() async {
+        MockURLProtocol.handler = { _ in
+            XCTFail("network must NOT be called for invalid filenames")
+            return (HTTPURLResponse(), nil)
+        }
+        for bad in ["a/b", "..\\b", ""] {
+            await assertThrowsKind(.invalidURL) {
+                _ = try await self.makeClient().getFile(name: bad)
+            }
+        }
+    }
+
+    func test_G5_getFile_returnsEmptyDataFor200WithEmptyBody() async throws {
+        MockURLProtocol.handler = bytesHandler(Data())
+        let received = try await makeClient().getFile(name: "empty.bin")
+        XCTAssertEqual(received, Data())
+    }
+
     // MARK: - Helpers
 
     private func makeClient(

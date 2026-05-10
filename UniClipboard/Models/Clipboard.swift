@@ -79,8 +79,18 @@ public extension Clipboard {
 public extension Clipboard {
     /// §4.1 — SHA-256 of UTF-8 bytes, uppercase hex.
     static func computeTextHash(_ text: String) -> String {
-        let digest = SHA256.hash(data: Data(text.utf8))
-        return digest.map { String(format: "%02X", $0) }.joined()
+        sha256Upper(Data(text.utf8))
+    }
+
+    /// §4.2 — SHA-256 of raw bytes, uppercase hex. Used to verify image,
+    /// file, and text-overflow payloads on download. Group ZIP hashing
+    /// (§4.3) is a different algorithm and not covered here.
+    static func computeBytesHash(_ data: Data) -> String {
+        sha256Upper(data)
+    }
+
+    private static func sha256Upper(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02X", $0) }.joined()
     }
 
     /// Build a `Clipboard` from a plain device-pasteboard string. Always

@@ -13,6 +13,9 @@ public struct SyncError: Error, Equatable, Sendable {
         case protocolError(Int)
         case serverError(Int)
         case decodingFailed
+        /// §4.4 — downloaded payload's SHA-256 didn't match the metadata
+        /// `hash`. Purely client-side; not produced by `mapHTTPStatus`.
+        case hashMismatch
     }
 
     public let kind: Kind

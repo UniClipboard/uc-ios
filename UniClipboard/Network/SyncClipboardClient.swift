@@ -91,6 +91,29 @@ public final class SyncClipboardClient: @unchecked Sendable {
         }
     }
 
+    /// `GET file/<name>` — download payload bytes. Spec §2.4.
+    /// Same filename guard as `putFile` — rejects `/`, `\`, empty before
+    /// any network call. 404 surfaces as `.notFound` (the spec calls this
+    /// a "server inconsistency" — metadata advertises `hasData=true` but
+    /// the file is gone — but the existing not-found mapping is the right
+    /// signal for callers).
+    public func getFile(name: String) async throws -> Data {
+        guard !name.isEmpty, !name.contains("/"), !name.contains("\\") else {
+            throw SyncError(kind: .invalidURL, underlying: "invalid filename: \(name)")
+        }
+        let url = baseURL
+            .appendingPathComponent("file")
+            .appendingPathComponent(name)
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        let (data, response) = try await perform(req)
+        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
+            throw err
+        }
+        return data
+    }
+
     /// `PUT file/<name>` — upload payload file. Spec §2.3.
     /// Rejects names containing `/`, `\`, or empty before any network
     /// call; spec mandates "MUST NOT contain path separators".

@@ -656,6 +656,54 @@
           "stringUnit" : { "state" : "translated", "value" : "SyncClipboard v1 compatible" }
         }
       }
+    },
+    "应用失败:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Apply failed:" }
+        }
+      }
+    },
+    "保存失败:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Save failed:" }
+        }
+      }
+    },
+    "正在应用…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Applying…" }
+        }
+      }
+    },
+    "正在保存…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Saving…" }
+        }
+      }
+    },
+    "已保存到 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Saved to %@" }
+        }
+      }
+    },
+    "内容校验失败 — 文件可能损坏" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Hash mismatch — file may be corrupted" }
+        }
+      }
     }
   }
 }

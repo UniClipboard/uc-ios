@@ -37,7 +37,10 @@ struct ContentView: View {
                                 await vm.push()
                             }
                             if env["UC_AUTO_APPLY"] == "1" {
-                                vm.applyServerToDevice()
+                                await vm.applyServerToDevice()
+                            }
+                            if env["UC_AUTO_SAVE"] == "1" {
+                                await vm.saveServerAttachment()
                             }
                         }
                 }

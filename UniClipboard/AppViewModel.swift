@@ -47,6 +47,24 @@ final class AppViewModel {
     /// Whether a push is in flight.
     var isPushing: Bool = false
 
+    /// Whether `applyServerToDevice()` is in flight (long-text path only;
+    /// short text completes synchronously and never sets this).
+    var isApplying: Bool = false
+
+    /// Last error from `applyServerToDevice()`. Cleared on success.
+    var applyError: SyncError?
+
+    /// Whether `saveServerAttachment()` is in flight.
+    var isSaving: Bool = false
+
+    /// Last error from `saveServerAttachment()`. Cleared on success.
+    var saveError: SyncError?
+
+    /// File URL of the most-recent successful `saveServerAttachment()`.
+    /// Cleared on the next refresh or save attempt so the UI's
+    /// "已保存到 …" caption doesn't outlive its relevance.
+    var lastSavedFileURL: URL?
+
     /// Current device pasteboard snapshot. Computed; the observer is the
     /// source of truth and `@Observable` propagates its `current` reads
     /// through this accessor automatically.
@@ -84,15 +102,99 @@ final class AppViewModel {
     /// re-read automatically.
     func readPasteboard() { pasteboard.read() }
 
-    /// Write the active server's short-text clipboard to the device.
-    /// Spec §2.4 (GET file) is out of scope this cycle, so long-text
-    /// (`hasData=true`) and image/file/group entries are no-ops here.
-    func applyServerToDevice() {
+    /// Write the active server's text clipboard to the device. Short
+    /// text (`hasData=false`) writes synchronously from the metadata
+    /// `text` field. Long text (`hasData=true`) downloads the §2.4
+    /// payload, verifies the §4.4 hash, decodes UTF-8, and writes the
+    /// result. Image/file/group entries are no-ops — apply means "write
+    /// to device pasteboard" and binary entries need UTI handling that
+    /// pairs with the image-push cycle.
+    func applyServerToDevice() async {
+        guard let entry = serverLatest, entry.type == .text else { return }
+        if !entry.hasData {
+            pasteboard.write(text: entry.text)
+            applyError = nil
+            return
+        }
+        guard !isApplying else { return }
+        guard let server = servers.activeConfig, let dataName = entry.dataName else { return }
+        isApplying = true
+        defer { isApplying = false }
+        do {
+            let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
+            let bytes = try await client.getFile(name: dataName)
+            try Self.verify(bytes: bytes, against: entry.hash)
+            let text = String(decoding: bytes, as: UTF8.self)
+            pasteboard.write(text: text)
+            applyError = nil
+        } catch let e as SyncError {
+            applyError = e
+        } catch {
+            applyError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
+        }
+    }
+
+    /// Download an image or file server entry's payload and write it to
+    /// `Documents/<sanitized downloadRelativePath>/<dataName>`. Group
+    /// entries are out of scope this cycle (§4.3 ZIP-traversal hash is
+    /// its own slice). Overwrites on collision — matches Files-app
+    /// behavior.
+    func saveServerAttachment() async {
+        guard !isSaving else { return }
         guard let entry = serverLatest,
-              entry.type == .text,
-              !entry.hasData
+              entry.hasData,
+              entry.type == .image || entry.type == .file,
+              let dataName = entry.dataName,
+              let server = servers.activeConfig
         else { return }
-        pasteboard.write(text: entry.text)
+        isSaving = true
+        defer { isSaving = false }
+        lastSavedFileURL = nil
+        do {
+            let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
+            let bytes = try await client.getFile(name: dataName)
+            try Self.verify(bytes: bytes, against: entry.hash)
+            let url = try Self.targetURL(for: dataName, relative: appSettings.downloadRelativePath)
+            try bytes.write(to: url, options: .atomic)
+            lastSavedFileURL = url
+            saveError = nil
+        } catch let e as SyncError {
+            saveError = e
+        } catch {
+            saveError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
+        }
+    }
+
+    private static func verify(bytes: Data, against expected: String?) throws {
+        // §4.4: null/whitespace `expected` matches anything — short-circuits
+        // here because hashMatches returns true in that case, never throws.
+        let actual = Clipboard.computeBytesHash(bytes)
+        guard Clipboard.hashMatches(expected: expected, actual: actual) else {
+            throw SyncError(kind: .hashMismatch)
+        }
+    }
+
+    private static func targetURL(for dataName: String, relative: String) throws -> URL {
+        let docs = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        // Sanitize against container escape and weird input. Drops `..`,
+        // `.`, and empty segments; strips leading/trailing slashes by virtue
+        // of the split. Trailing-slash and leading-slash users still get
+        // their intended subdir.
+        let sanitized = relative
+            .split(separator: "/")
+            .filter { $0 != "." && $0 != ".." && !$0.isEmpty }
+            .map(String.init)
+        var dir = docs
+        for segment in sanitized {
+            dir.appendPathComponent(segment, isDirectory: true)
+        }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(dataName, isDirectory: false)
     }
 }
 
@@ -144,6 +246,10 @@ extension AppViewModel {
         if isRefreshing { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        // The "已保存到 …" caption is bound to the last save attempt, not
+        // the server-side state. A refresh changes what's on screen, so the
+        // caption no longer matches the entry above it — clear it.
+        lastSavedFileURL = nil
         let trustInsecure = appSettings.trustInsecureCert
         do {
             let client = try SyncClipboardClient(server: server, trustInsecureCert: trustInsecure)
