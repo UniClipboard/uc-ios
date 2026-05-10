@@ -47,6 +47,17 @@ final class DevicePasteboardObserver {
     @ObservationIgnored
     private let notificationCenter: NotificationCenter
 
+    /// `UIPasteboard.changeCount` recorded immediately after our own write.
+    /// `read()` short-circuits when the current changeCount matches this —
+    /// the changedNotification firing for our own setData/string assignment
+    /// is the echo case we want to ignore (otherwise live-mode image apply
+    /// would re-canonicalize basename to `image.<ext>` and mis-flag §4.2
+    /// as mismatched). External copies always advance changeCount further,
+    /// so they still propagate. `-1` as initial sentinel is safe because
+    /// `UIPasteboard.changeCount` is non-negative.
+    @ObservationIgnored
+    private var lastWriteChangeCount: Int = -1
+
     init(
         notificationCenter: NotificationCenter = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -57,15 +68,18 @@ final class DevicePasteboardObserver {
         subscribe()
     }
 
-    /// Write `text` to `UIPasteboard.general`. The system pasteboard's
-    /// `changedNotification` will fire and our subscription will re-read,
-    /// so `current` ends up reflecting the new state without extra
-    /// plumbing. Under env hooks, we skip the system call to keep simctl
-    /// recipes hermetic and update `current` directly.
+    /// Write `text` to `UIPasteboard.general`. We adopt `current` to the
+    /// publish-shape clipboard immediately (don't wait for the change
+    /// notification) and capture changeCount so the echo notification is
+    /// ignored. Two-layer defense: even if changeCount tracking races, the
+    /// adopted `current` already shows the synced state. Under env hooks,
+    /// we skip the system call to keep simctl recipes hermetic.
     func write(text: String) {
         switch envMode {
         case .live:
             UIPasteboard.general.string = text
+            lastWriteChangeCount = UIPasteboard.general.changeCount
+            current = Clipboard.publishText(text).clipboard
         case .forceNil, .forceText, .forceImage:
             current = Clipboard.fromText(text)
         }
@@ -76,34 +90,49 @@ final class DevicePasteboardObserver {
     /// pasteboard so they can be pasted into another app).
     ///
     /// `originalName`, when non-nil, is the dataName from the server entry
-    /// being applied. Under env hooks we adopt it directly so the
-    /// observer's `current` carries the same §4.2 basename binding as
-    /// the server, and the connector reads "synced" instead of falsely
-    /// reporting mismatch. (Live mode can't preserve basename — UIPasteboard
-    /// doesn't carry it — so the observer's next re-read after our write
-    /// will re-canonicalize to "image.<ext>"; documented limitation.)
+    /// being applied. We adopt it directly so the observer's `current`
+    /// carries the same §4.2 basename binding as the server, and the
+    /// connector reads "synced" instead of falsely reporting mismatch.
+    /// In live mode we ALSO call `setData` and capture `changeCount`; the
+    /// echo notification that fires next is ignored by `read()` because
+    /// changeCount matches. UIPasteboard discards basename, so without
+    /// these two layers a live re-read would canonicalize to `image.<ext>`
+    /// and falsely flag `§4.2` mismatch.
     func write(data: Data, uti: String, originalName: String? = nil) {
+        let name = originalName ?? "image.\(Self.ext(forUTI: uti))"
+        let adopted = Clipboard(
+            type: .image,
+            hash: Clipboard.computeFileHash(name: name, bytes: data),
+            text: name,
+            hasData: true,
+            dataName: name,
+            size: data.count
+        )
         switch envMode {
         case .live:
             UIPasteboard.general.setData(data, forPasteboardType: uti)
+            lastWriteChangeCount = UIPasteboard.general.changeCount
         case .forceNil, .forceText, .forceImage:
-            let name = originalName ?? "image.\(Self.ext(forUTI: uti))"
-            current = Clipboard(
-                type: .image,
-                hash: Clipboard.computeFileHash(name: name, bytes: data),
-                text: name,
-                hasData: true,
-                dataName: name,
-                size: data.count
-            )
+            break
         }
+        current = adopted
     }
 
     /// Re-read the pasteboard (or env override) into `current`. Idempotent;
     /// safe to call from notifications and explicit UI triggers. Discards
     /// payload bytes — the UI doesn't need them. Push uses `snapshot()`
     /// instead so it gets fresh bytes at push time.
+    ///
+    /// Echo guard: when the live `changeCount` equals the one we recorded
+    /// after our own most recent write, this is the notification firing
+    /// for that write and `current` is already the adopted entry — bail
+    /// out so we don't re-canonicalize basename. External copies advance
+    /// changeCount further and fall through to the fresh read.
     func read() {
+        if case .live = envMode,
+           UIPasteboard.general.changeCount == lastWriteChangeCount {
+            return
+        }
         current = snapshot()?.clipboard
     }
 

@@ -17,6 +17,8 @@ The repository builds two ways and shares source between them:
 
 Don't try to add SwiftPM `.copy("Fixtures")` with a directory symlink — SwiftPM doesn't follow it. The `#filePath` approach was chosen specifically because it survives without any sync step.
 
+The Xcode target carries one Run Script build phase, **"Inject UIFileSharingEnabled (Xcode 26 INFOPLIST_KEY workaround)"**, that PlistBuddy-injects `UIFileSharingEnabled=true` into `${TARGET_BUILD_DIR}/${INFOPLIST_PATH}` after `ProcessInfoPlistFile`. Reason: Xcode 26's processInfoPlistFile silently drops `INFOPLIST_KEY_UIFileSharingEnabled` (sibling keys like `INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace` are honored), and we ship "save to Documents" — Files-app needs both keys to surface the folder under "On My iPhone". Two non-obvious bits keep this working: the script declares `$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)` as `inputPaths` (not `outputPaths`) so it runs *after* `ProcessInfoPlistFile` instead of before, and the target sets `ENABLE_USER_SCRIPT_SANDBOXING = NO` because the sandbox routes in-place writes through a copy-on-write overlay that's discarded on script exit (PlistBuddy returns 0 but the change vanishes). The script verifies the value via `Print` and fails the build if injection didn't persist — so if Apple ever fixes the underlying bug we'll notice and can revert.
+
 ## Commands
 
 Run from the repo root.
@@ -49,7 +51,7 @@ xcrun simctl launch "iPhone 17 Pro" app.uniclipboard.UniClipboard \
 xcrun simctl io "iPhone 17 Pro" screenshot /tmp/shot.png
 ```
 
-Pass per-launch env via `SIMCTL_CHILD_<NAME>=value`. Locale via `-AppleLanguages '(en)'` etc. (the app supports `en` and `zh-Hans`; `zh-Hans` is the source language of the catalog).
+Pass per-launch env via `SIMCTL_CHILD_<NAME>=value` exported in the shell calling `simctl launch` — e.g., `SIMCTL_CHILD_UC_AUTO_PUSH=1 xcrun simctl launch booted app.uniclipboard.UniClipboard`. There is **no** `--setenv` flag on `simctl launch`; the `SIMCTL_CHILD_` prefix is the only documented way to inject env into the launched app. Locale via `-AppleLanguages '(en)'` etc. (the app supports `en` and `zh-Hans`; `zh-Hans` is the source language of the catalog).
 
 ### Launch-time env hooks (DEBUG-style)
 
@@ -73,14 +75,38 @@ STUB_MODE=401 scripts/sync-stub-server.py    # any int → that HTTP status
 STUB_PORT=9000 scripts/sync-stub-server.py
 ```
 
-To point a configured iOS simulator at the stub from outside the app, write the value as `Data` (SettingsStore reads `Data`, not `String`) and clear any legacy `server_config` first — otherwise §5.5 migration kicks in and overwrites the new key:
+To point a configured iOS simulator at the stub from outside the app, the value must be (a) `Data`, not `String` — `SettingsStore` reads `Data`; and (b) written into the **app's sandboxed prefs**, not the simulator user-domain plist. `xcrun simctl spawn booted defaults write app.uniclipboard.UniClipboard …` looks like it should work but writes to the wrong location — iOS apps read from `<container>/Library/Preferences/<bundle>.plist` (sandboxed). cfprefsd caches the sandbox plist on first read, so the only reliable recipe is **uninstall → install → pre-seed → launch**:
 
 ```bash
+APP="$(xcodebuild -scheme UniClipboard -sdk iphonesimulator -showBuildSettings 2>/dev/null \
+  | awk -F'= ' '/BUILT_PRODUCTS_DIR/{print $2; exit}')/UniClipboard.app"
+
 SCL='{"configs":[{"id":"stub","url":"http://127.0.0.1:8033/","username":"u","password":"p","autoSwitchWifiNames":[]}],"activeConfigId":"stub"}'
-HEX=$(printf '%s' "$SCL" | xxd -p | tr -d '\n')
-xcrun simctl spawn booted defaults delete app.uniclipboard.UniClipboard server_config 2>/dev/null
-xcrun simctl spawn booted defaults write  app.uniclipboard.UniClipboard server_config_list -data "$HEX"
+
+# 1. Build a binary plist with server_config_list as Data.
+cat > /tmp/uc-prefs.xml <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>server_config_list</key>
+  <data>$(printf '%s' "$SCL" | base64)</data>
+</dict>
+</plist>
+EOF
+
+# 2. Reset the sandbox so cfprefsd starts clean, then drop our plist in.
+xcrun simctl uninstall booted app.uniclipboard.UniClipboard
+xcrun simctl install   booted "$APP"
+CONTAINER=$(xcrun simctl get_app_container booted app.uniclipboard.UniClipboard data)
+mkdir -p "$CONTAINER/Library/Preferences"
+plutil -convert binary1 -o "$CONTAINER/Library/Preferences/app.uniclipboard.UniClipboard.plist" /tmp/uc-prefs.xml
+
+# 3. Launch with whatever env hooks you need (NOT --setenv).
+SIMCTL_CHILD_UC_AUTO_APPLY=1 xcrun simctl launch booted app.uniclipboard.UniClipboard
 ```
+
+The legacy `server_config` key (pre-multi-server) doesn't need an explicit delete — `uninstall` wiped the whole sandbox already, and the new plist we drop in only carries `server_config_list`, so §5.5 migration sees no source data and stays out of the way.
 
 iOS 14+ ATS lets `127.0.0.1` through without an Info.plist exception, so plain HTTP works against the stub from the simulator.
 
