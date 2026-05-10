@@ -55,7 +55,7 @@
 				4D479E072FAEAE5B00B8F825 /* Sources */,
 				4D479E082FAEAE5B00B8F825 /* Frameworks */,
 				4D479E092FAEAE5B00B8F825 /* Resources */,
-				4D8A0E012FB1ABCD00C8F901 /* Inject UIFileSharingEnabled (Xcode 26 INFOPLIST_KEY workaround) */,
+				4D8A0E012FB1ABCD00C8F901 /* Patch Info.plist (UIFileSharingEnabled + ATS LAN + LocalNetworkUsage) */,
 			);
 			buildRules = (
 			);
@@ -117,7 +117,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		4D8A0E012FB1ABCD00C8F901 /* Inject UIFileSharingEnabled (Xcode 26 INFOPLIST_KEY workaround) */ = {
+		4D8A0E012FB1ABCD00C8F901 /* Patch Info.plist (UIFileSharingEnabled + ATS LAN + LocalNetworkUsage) */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -128,14 +128,14 @@
 			inputPaths = (
 				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
 			);
-			name = "Inject UIFileSharingEnabled (Xcode 26 INFOPLIST_KEY workaround)";
+			name = "Patch Info.plist (UIFileSharingEnabled + ATS LAN + LocalNetworkUsage)";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Xcode 26's processInfoPlistFile silently drops INFOPLIST_KEY_UIFileSharingEnabled\n# even though `xcodebuild -showBuildSettings` shows it set. Sibling keys like\n# INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace are honored. Inject directly\n# into the generated Info.plist (depended on via inputPaths so this runs after\n# ProcessInfoPlistFile) before code signing so Files-app can see the\n# UniClipboard Documents folder. Re-apply on every build (Add fails when the\n# key already exists; Set then writes it).\nset -e\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$PLIST\" ]; then\n  echo \"error: Info.plist not found at $PLIST\" >&2\n  exit 1\nfi\nif /usr/libexec/PlistBuddy -c \"Add :UIFileSharingEnabled bool true\" \"$PLIST\"; then\n  :\nelif /usr/libexec/PlistBuddy -c \"Set :UIFileSharingEnabled true\" \"$PLIST\"; then\n  :\nelse\n  echo \"error: PlistBuddy failed to write UIFileSharingEnabled to $PLIST\" >&2\n  exit 1\nfi\nVALUE=$(/usr/libexec/PlistBuddy -c \"Print :UIFileSharingEnabled\" \"$PLIST\" 2>/dev/null || true)\nif [ \"$VALUE\" != \"true\" ]; then\n  echo \"error: UIFileSharingEnabled missing or wrong after PlistBuddy run (got: '$VALUE')\" >&2\n  exit 1\nfi\necho \"note: Injected UIFileSharingEnabled=true into $PLIST\"\n";
+			shellScript = "# After ProcessInfoPlistFile (declared as inputPaths), patch three keys:\n# 1. UIFileSharingEnabled — Xcode 26's processInfoPlistFile silently drops\n#    INFOPLIST_KEY_UIFileSharingEnabled (sibling LS* keys are honored, the\n#    bug is per-key). Files-app needs this to surface the Documents folder.\n# 2. NSAppTransportSecurity > NSAllowsLocalNetworking — nested dict, no\n#    INFOPLIST_KEY_* equivalent. Lets HTTP traffic go to RFC private IPs\n#    (10/8, 172.16/12, 192.168/16, .local) so the device can reach a server\n#    running on a LAN host. Public-internet HTTP stays blocked.\n# 3. NSLocalNetworkUsageDescription — iOS 14+ requires this string before\n#    the system surfaces the LAN permission prompt; without it, requests\n#    silently fail. zh-Hans copy (matches source language).\n# Sandbox is OFF for this target so PlistBuddy in-place writes persist.\n# Idempotent: Add then Set fallback. Verify all three after, fail loudly if\n# the COW overlay regression returns or a key disappears.\nset -e\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nPB=/usr/libexec/PlistBuddy\nif [ ! -f \"$PLIST\" ]; then echo \"error: Info.plist not found at $PLIST\" >&2; exit 1; fi\n$PB -c \"Add :UIFileSharingEnabled bool true\" \"$PLIST\" 2>/dev/null || $PB -c \"Set :UIFileSharingEnabled true\" \"$PLIST\"\n$PB -c \"Add :NSAppTransportSecurity dict\" \"$PLIST\" 2>/dev/null || true\n$PB -c \"Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true\" \"$PLIST\" 2>/dev/null || $PB -c \"Set :NSAppTransportSecurity:NSAllowsLocalNetworking true\" \"$PLIST\"\nDESC=\"需要访问本地网络以连接你部署的剪贴板服务器\"\n$PB -c \"Add :NSLocalNetworkUsageDescription string $DESC\" \"$PLIST\" 2>/dev/null || $PB -c \"Set :NSLocalNetworkUsageDescription $DESC\" \"$PLIST\"\nA=$($PB -c \"Print :UIFileSharingEnabled\" \"$PLIST\" 2>/dev/null || true)\nB=$($PB -c \"Print :NSAppTransportSecurity:NSAllowsLocalNetworking\" \"$PLIST\" 2>/dev/null || true)\nC=$($PB -c \"Print :NSLocalNetworkUsageDescription\" \"$PLIST\" 2>/dev/null || true)\nif [ \"$A\" != \"true\" ]; then echo \"error: UIFileSharingEnabled persistence failed (got: '$A')\" >&2; exit 1; fi\nif [ \"$B\" != \"true\" ]; then echo \"error: NSAllowsLocalNetworking persistence failed (got: '$B')\" >&2; exit 1; fi\nif [ -z \"$C\" ]; then echo \"error: NSLocalNetworkUsageDescription persistence failed\" >&2; exit 1; fi\necho \"note: Info.plist hardened (UIFileSharingEnabled, NSAllowsLocalNetworking, NSLocalNetworkUsageDescription)\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
