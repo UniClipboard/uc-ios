@@ -114,6 +114,70 @@ public final class SyncClipboardClient: @unchecked Sendable {
         return data
     }
 
+    /// `GET /api/history/<profileId>/data` — download a history record's
+    /// payload bytes. Spec §2.11.
+    ///
+    /// `profileId` is the composite `<type>-<hash>` form (same as §2.8,
+    /// **not** the split form used by §2.10 PATCH). Callers either
+    /// construct it via `HistoryRecord.profileId(type:hash:)` or read
+    /// it off `HistoryRecord.id` directly.
+    ///
+    /// 404 surfaces as `.notFound` — for §2.11 that means either the
+    /// record never existed or it was soft-deleted with bytes garbage-
+    /// collected. Callers treat both as "absent".
+    public func getHistoryPayload(profileId: String) async throws -> Data {
+        guard !profileId.isEmpty, !profileId.contains("/"), !profileId.contains("\\") else {
+            throw SyncError(kind: .invalidURL, underlying: "invalid profileId: \(profileId)")
+        }
+        let url = baseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("history")
+            .appendingPathComponent(profileId)
+            .appendingPathComponent("data")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        let (data, response) = try await perform(req)
+        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
+            throw err
+        }
+        return data
+    }
+
+    /// `POST /api/history/query` — paginated history listing. Spec §2.7.
+    ///
+    /// Filters are sent as `multipart/form-data` per the wire contract.
+    /// Returns `[HistoryRecord]` (possibly empty — an empty page is the
+    /// documented end-of-list signal, NOT an error).
+    ///
+    /// Pagination: callers loop with `page = 1, 2, …` until they receive
+    /// an empty array. Incremental sync: pass the highest `lastModified`
+    /// seen so far as `modifiedAfter` to fetch only the delta. The
+    /// server keys off `lastModified > modifiedAfter` (strict inequality).
+    public func queryHistory(_ query: HistoryQuery = HistoryQuery()) async throws -> [HistoryRecord] {
+        let url = baseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("history")
+            .appendingPathComponent("query")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(authHeader, forHTTPHeaderField: "Authorization")
+
+        let body = query.multipartEncoded()
+        req.setValue(body.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = body.encoded()
+
+        let (data, response) = try await perform(req)
+        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
+            throw err
+        }
+        do {
+            return try JSONDecoder().decode([HistoryRecord].self, from: data)
+        } catch {
+            throw SyncError(kind: .decodingFailed, underlying: "\(error)")
+        }
+    }
+
     /// `PUT file/<name>` — upload payload file. Spec §2.3.
     /// Rejects names containing `/`, `\`, or empty before any network
     /// call; spec mandates "MUST NOT contain path separators".
