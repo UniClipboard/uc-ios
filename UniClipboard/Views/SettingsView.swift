@@ -160,11 +160,18 @@ private struct ServersListView: View {
                             )
                         }
                         .swipeActions(allowsFullSwipe: false) {
-                            Button(role: .destructive) {
+                            // No `role: .destructive` here — that triggers
+                            // SwiftUI's row-removal animation immediately on
+                            // tap, which conflicts with the confirmation
+                            // alert (row collapses, then snaps back when the
+                            // data source is unchanged). `.tint(.red)` keeps
+                            // the destructive look without the auto-anim.
+                            Button {
                                 pendingDelete = server
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
+                            .tint(.red)
                             if server.id != servers.activeConfigId {
                                 Button {
                                     servers.activeConfigId = server.id
