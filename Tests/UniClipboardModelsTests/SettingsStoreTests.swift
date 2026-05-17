@@ -159,6 +159,102 @@ final class SettingsStoreTests: XCTestCase {
 
     // MARK: - T7: forward-compat — partial appSettings JSON fills in defaults
 
+    // MARK: - T8: clipboard history round-trip + corruption
+
+    func test_loadHistory_whenEmptyDefaults_returnsEmptyArray() {
+        let store = makeStore()
+        XCTAssertEqual(store.loadHistory(), [])
+    }
+
+    func test_history_saveThenLoad_preservesOrderIdsAndDirections() {
+        let store = makeStore()
+        let items: [ClipboardHistoryItem] = [
+            ClipboardHistoryItem(
+                entry: Clipboard(type: .text, hash: nil, text: "first", hasData: false, size: 5),
+                timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+                direction: .pulled
+            ),
+            ClipboardHistoryItem(
+                entry: Clipboard(
+                    type: .image,
+                    hash: "AA11BB22",
+                    text: "snap.png",
+                    hasData: true,
+                    dataName: "snap.png",
+                    size: 1024
+                ),
+                timestamp: Date(timeIntervalSince1970: 1_700_000_100),
+                direction: .pushed
+            ),
+        ]
+        store.saveHistory(items)
+        // ID stability is the whole reason `id` is `var` — without that,
+        // a Codable round-trip mints fresh UUIDs and the SwiftUI list
+        // ForEach loses its diffing identity on every cold launch.
+        XCTAssertEqual(store.loadHistory(), items)
+    }
+
+    func test_saveHistory_emptyArray_persistsAndRoundTrips() {
+        let store = makeStore()
+        let seed = [
+            ClipboardHistoryItem(
+                entry: Clipboard(type: .text, text: "x", hasData: false),
+                timestamp: Date(timeIntervalSince1970: 0),
+                direction: .pulled
+            )
+        ]
+        store.saveHistory(seed)
+        XCTAssertEqual(store.loadHistory().count, 1)
+        store.saveHistory([])
+        XCTAssertEqual(store.loadHistory(), [])
+    }
+
+    func test_loadHistory_whenJSONIsCorrupt_returnsEmptyArray() {
+        seed(Data("not json".utf8), forKey: AppSettings.PersistenceKey.clipboardHistory)
+        let store = makeStore()
+        XCTAssertEqual(store.loadHistory(), [])
+    }
+
+    // MARK: - T9: history watermark
+
+    func test_loadHistoryWatermark_whenEmpty_returnsNil() {
+        let store = makeStore()
+        XCTAssertNil(store.loadHistoryWatermark())
+    }
+
+    func test_historyWatermark_saveThenLoad_roundTripsToMillisecond() {
+        let store = makeStore()
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = f.date(from: "2026-05-17T16:43:21.420Z")!
+        store.saveHistoryWatermark(date)
+        XCTAssertEqual(store.loadHistoryWatermark(), date)
+    }
+
+    func test_historyWatermark_nilClearsTheKey() {
+        let store = makeStore()
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        store.saveHistoryWatermark(date)
+        XCTAssertNotNil(store.loadHistoryWatermark())
+        store.saveHistoryWatermark(nil)
+        XCTAssertNil(store.loadHistoryWatermark())
+        XCTAssertNil(defaults.string(forKey: AppSettings.PersistenceKey.historyModifiedAfter))
+    }
+
+    func test_historyWatermark_acceptsPlainISOWithoutFractionalSeconds() {
+        // Hand-rolled servers / DB exports sometimes truncate fractional
+        // seconds. The loader MUST still parse.
+        seed("2026-05-17T16:43:21Z", forKey: AppSettings.PersistenceKey.historyModifiedAfter)
+        let store = makeStore()
+        XCTAssertNotNil(store.loadHistoryWatermark())
+    }
+
+    func test_historyWatermark_corruptStringReturnsNil() {
+        seed("not a date", forKey: AppSettings.PersistenceKey.historyModifiedAfter)
+        let store = makeStore()
+        XCTAssertNil(store.loadHistoryWatermark())
+    }
+
     func test_loadAppSettings_whenJSONIsPartial_missingKeysGetDefaults() throws {
         let partial = "{ \"trustInsecureCert\": true }"
         seed(Data(partial.utf8), forKey: AppSettings.PersistenceKey.appSettings)

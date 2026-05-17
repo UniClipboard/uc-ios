@@ -291,4 +291,104 @@ final class FixturesTests: XCTestCase {
         XCTAssertEqual(AppSettings.PersistenceKey.appSettings,        "app_settings")
         XCTAssertEqual(AppSettings.PersistenceKey.legacyServerConfig, "server_config")
     }
+
+    // MARK: - HistoryRecord wire fixtures (§3.6)
+
+    func test_historyRecordText_decodesAllOptionalFields() throws {
+        let data = try loadFixture("history_record_text")
+        let record = try JSONDecoder().decode(HistoryRecord.self, from: data)
+
+        XCTAssertEqual(record.type, .text)
+        XCTAssertEqual(record.hash, "3F4E62D9F184380BAD1B0F94B5518DCBF35ACB79B34F6D6E34F3DAB16CD7BC8F")
+        XCTAssertEqual(record.text, "Hello, SyncClipboard!")
+        XCTAssertFalse(record.hasData)
+        XCTAssertEqual(record.size, 21)
+        XCTAssertNotNil(record.createTime)
+        XCTAssertNotNil(record.lastModified)
+        XCTAssertNotNil(record.lastAccessed)
+        XCTAssertFalse(record.starred)
+        XCTAssertFalse(record.pinned)
+        XCTAssertEqual(record.version, 0)
+        XCTAssertFalse(record.isDeleted)
+    }
+
+    func test_historyRecordText_roundTripPreservesISOTimestamps() throws {
+        let data = try loadFixture("history_record_text")
+        let decoded = try JSONDecoder().decode(HistoryRecord.self, from: data)
+        let reEncoded = try JSONEncoder().encode(decoded)
+        let redecoded = try JSONDecoder().decode(HistoryRecord.self, from: reEncoded)
+        // Date equality holds to sub-millisecond because the fractional-ISO
+        // formatter we encode through has millisecond resolution and the
+        // fixture's timestamps already round to whole milliseconds.
+        XCTAssertEqual(decoded, redecoded)
+    }
+
+    func test_historyRecordMinimal_fillsDefaults() throws {
+        let data = try loadFixture("history_record_minimal")
+        let record = try JSONDecoder().decode(HistoryRecord.self, from: data)
+
+        XCTAssertEqual(record.type, .file)
+        XCTAssertEqual(record.hash, "088EA33D054B64459EA2EB0CBD9F9152DD0BE4C38C6350963BBA00FDDC94CCEA")
+        XCTAssertNil(record.text)
+        XCTAssertFalse(record.hasData)
+        XCTAssertNil(record.size)
+        XCTAssertNil(record.createTime)
+        XCTAssertNil(record.lastModified)
+        XCTAssertNil(record.lastAccessed)
+        XCTAssertFalse(record.starred)
+        XCTAssertFalse(record.pinned)
+        XCTAssertNil(record.version)
+        XCTAssertFalse(record.isDeleted)
+    }
+
+    func test_historyRecordDeleted_isDeletedReadAndRoundTrip() throws {
+        let data = try loadFixture("history_record_deleted")
+        let record = try JSONDecoder().decode(HistoryRecord.self, from: data)
+
+        XCTAssertTrue(record.isDeleted, "Read shape uses isDeleted (not isDelete)")
+        XCTAssertEqual(record.version, 3)
+
+        // Re-encoding must NOT introduce isDelete (no trailing d) — that
+        // key is the PATCH-update-body convention, not the read shape.
+        let reEncoded = try JSONEncoder().encode(record)
+        let keys = try keys(reEncoded)
+        XCTAssertTrue(keys.contains("isDeleted"))
+        XCTAssertFalse(keys.contains("isDelete"))
+    }
+
+    func test_historyRecord_idIsCompositeTypeDashHash() {
+        let r = HistoryRecord(hash: "ABCDEF", type: .text)
+        XCTAssertEqual(r.id, "Text-ABCDEF")
+        XCTAssertEqual(HistoryRecord.profileId(type: .image, hash: "XYZ"), "Image-XYZ")
+    }
+
+    /// The Android wire emits `…Z` timestamps; some hand-rolled servers
+    /// truncate fractional seconds. Both shapes MUST decode.
+    func test_historyRecord_decodesPlainISOWithoutFractionalSeconds() throws {
+        let json = #"""
+        {
+          "hash": "AA",
+          "type": "Text",
+          "createTime": "2026-05-17T16:43:00Z"
+        }
+        """#
+        let r = try JSONDecoder().decode(HistoryRecord.self, from: Data(json.utf8))
+        XCTAssertNotNil(r.createTime)
+    }
+
+    /// Empty/whitespace timestamps decode to nil rather than throwing,
+    /// matching the `hash` normalization on `Clipboard`.
+    func test_historyRecord_emptyTimestampDecodesToNil() throws {
+        let json = #"""
+        {
+          "hash": "AA",
+          "type": "Text",
+          "createTime": "",
+          "lastModified": "   "
+        }
+        """#
+        let r = try JSONDecoder().decode(HistoryRecord.self, from: Data(json.utf8))
+        XCTAssertNil(r.createTime)
+        XCTAssertNil(r.lastModified)
+    }
 }
