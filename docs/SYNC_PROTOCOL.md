@@ -66,8 +66,11 @@ The server exposes two logical resource families:
 Plus two utility endpoints (§2.5, §2.13).
 
 > The Android client (`src/services/SyncClipboardClient.ts`) is the reference
-> implementation. The legacy SyncClipboard upstream server does **not**
-> implement the history API; UniClipboard servers do.
+> implementation. Both `/SyncClipboard.json` and `/api/history/*` are part of
+> the SyncClipboard protocol — a server claiming SyncClipboard compatibility
+> is expected to implement both families. The Android client wires them up in
+> a single `SyncClipboardClient` class implementing two interfaces
+> (`ISyncClipboardAPI` + `IHistoryAPI`); the iOS port should mirror that.
 
 ### 2.1 `GET SyncClipboard.json` — pull current clipboard state
 

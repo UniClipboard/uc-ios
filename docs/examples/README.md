@@ -40,6 +40,24 @@ fixtures conform to. Section numbers below reference that document.
 
 ---
 
+## History fixtures (`HistoryRecord` JSON, §3.6)
+
+| File | Scenario | Notes |
+|---|---|---|
+| `history_record_text.json` | Fully-populated text record | All optional fields present: timestamps, starred/pinned flags, version, `isDeleted=false`. Hash matches `clipboard_text_short.json` — the same logical content surfaces in both the live-clipboard family and the history family. |
+| `history_record_minimal.json` | Only required fields | `hash` + `type`. Receivers MUST tolerate missing optional fields and supply sensible defaults (timestamps treated as unknown; flags `false`; `isDeleted=false`). |
+| `history_record_deleted.json` | Soft-deleted tombstone | `isDeleted=true` in the **read** shape (§3.6). The PATCH update body uses `isDelete` (no trailing `d`) — see §2.10. Clients deciding whether to re-upload via §2.9 MUST treat `isDeleted=true` as "absent". |
+
+### What to assert in your decoder tests
+
+- All optional fields decode to `nil`/`false` defaults when absent (forward compat).
+- `isDeleted` (read) and `isDelete` (PATCH update body) are **two different keys**.
+  A single Swift property `isDeleted` works if PATCH bodies are encoded via a
+  separate update DTO with its own `CodingKeys`.
+- Composite `profileId = "<type>-<hash>"` is computable from any record.
+
+---
+
 ## Persistence fixtures (§5)
 
 | File | Persistence key | Notes |
