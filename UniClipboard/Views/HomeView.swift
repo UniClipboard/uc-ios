@@ -153,6 +153,7 @@ struct HomeView: View {
                                 } label: {
                                     Label("删除", systemImage: "trash")
                                 }
+                                .tint(.red)
                                 if item.entry.hasData,
                                    item.entry.type == .image || item.entry.type == .file {
                                     Button {
