@@ -85,5 +85,16 @@ public extension AppSettings {
         /// the engine confirmed both sides shared. NOT a user setting; lives
         /// outside `app_settings` so it can be cleared without touching prefs.
         public static let lastSyncedContentHash = "last_synced_content_hash"
+        /// Cycle 11 — local observation log: every Clipboard the engine
+        /// pulled or pushed, newest-first, capped client-side. Not part of
+        /// the wire protocol; the server only keeps one record (§2.1).
+        public static let clipboardHistory = "clipboard_history"
+        /// Cycle 11 — incremental-sync watermark for §2.7
+        /// (`POST /api/history/query`). The highest `lastModified` seen
+        /// in any prior page; passed back as `modifiedAfter` so the
+        /// server only returns strictly-newer records. Stored as an
+        /// ISO-8601 string so the wire format and the persisted form
+        /// match (debugging via `defaults read` is then trivial).
+        public static let historyModifiedAfter = "history_modified_after"
     }
 }

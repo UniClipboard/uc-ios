@@ -123,4 +123,65 @@ public final class SettingsStore: @unchecked Sendable {
             defaults.removeObject(forKey: AppSettings.PersistenceKey.lastSyncedContentHash)
         }
     }
+
+    // MARK: - Clipboard history (cycle 11)
+
+    /// Load the persisted clipboard observation log. Returns `[]` on cold
+    /// launch or when the stored JSON fails to decode (forward-compat with
+    /// the rest of the store's corruption policy — never block startup on
+    /// a bad blob).
+    public func loadHistory() -> [ClipboardHistoryItem] {
+        guard let data = defaults.data(forKey: AppSettings.PersistenceKey.clipboardHistory) else {
+            return []
+        }
+        return (try? decoder.decode([ClipboardHistoryItem].self, from: data)) ?? []
+    }
+
+    /// Persist the clipboard observation log. Callers cap the size before
+    /// calling — this method writes whatever it's handed. An empty array
+    /// is still encoded (rather than removing the key) so a subsequent
+    /// load round-trips to `[]` and the corruption fallback never fires.
+    public func saveHistory(_ items: [ClipboardHistoryItem]) {
+        guard let data = try? encoder.encode(items) else { return }
+        defaults.set(data, forKey: AppSettings.PersistenceKey.clipboardHistory)
+    }
+
+    /// Load the incremental-sync watermark (the largest `lastModified`
+    /// seen on any prior §2.7 page). Returns `nil` on cold launch or if
+    /// the stored string fails to parse — both are treated as "fetch
+    /// everything next round".
+    public func loadHistoryWatermark() -> Date? {
+        guard let s = defaults.string(forKey: AppSettings.PersistenceKey.historyModifiedAfter),
+              !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        if let d = Self.fractionalISOFormatter.date(from: s) { return d }
+        if let d = Self.plainISOFormatter.date(from: s) { return d }
+        return nil
+    }
+
+    /// Persist the watermark. Pass `nil` to clear (e.g. when switching
+    /// servers — the new server's `lastModified` timeline is unrelated
+    /// to the old one).
+    public func saveHistoryWatermark(_ date: Date?) {
+        if let date {
+            defaults.set(Self.fractionalISOFormatter.string(from: date),
+                         forKey: AppSettings.PersistenceKey.historyModifiedAfter)
+        } else {
+            defaults.removeObject(forKey: AppSettings.PersistenceKey.historyModifiedAfter)
+        }
+    }
+
+    // MARK: - ISO formatters (shared between watermark + future date keys)
+
+    private static let fractionalISOFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let plainISOFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 }
