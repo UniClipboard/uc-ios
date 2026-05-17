@@ -39,6 +39,16 @@
 		4DB100012FB1E000B8F901 /* UniClipboardShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UniClipboardShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4DB1000E2FB1E000B8F901 /* Exceptions for "UniClipboardShare" folder in "UniClipboardShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4DB100032FB1E000B8F901 /* UniClipboardShare */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4D479E0D2FAEAE5B00B8F825 /* UniClipboard */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -53,23 +63,12 @@
 		4DB100022FB1E000B8F901 /* UniClipboardShare */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				4DB1000E2FB1E000B8F901 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+				4DB1000E2FB1E000B8F901 /* Exceptions for "UniClipboardShare" folder in "UniClipboardShare" target */,
 			);
 			path = UniClipboardShare;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		4DB1000E2FB1E000B8F901 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-				UniClipboardShare.entitlements,
-			);
-			target = 4DB100032FB1E000B8F901 /* UniClipboardShare */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		4D479E082FAEAE5B00B8F825 /* Frameworks */ = {
@@ -127,8 +126,8 @@
 				4DB1000B2FB1E000B8F901 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				4DA5D0012FB1DEAD00C8F901 /* Shared */,
 				4D479E0D2FAEAE5B00B8F825 /* UniClipboard */,
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
 			);
 			name = UniClipboard;
 			packageProductDependencies = (

@@ -8,6 +8,13 @@ import UIKit
 @MainActor
 struct ShareRootView: View {
     let context: ShareExtensionContext?
+    /// Server id pre-selected by iOS when the user tapped a Sharing
+    /// Suggestions tile. When non-nil and matching a known server, we
+    /// skip the picker UI and go straight to upload (`.uploading`)
+    /// the moment attachment loading finishes. When non-nil but stale
+    /// (server was deleted), we fall back to the picker and surface a
+    /// note so the user knows why the shortcut didn't fire.
+    var prefilledServerId: String? = nil
     let onFinish: () -> Void
     let onCancel: () -> Void
 
@@ -16,6 +23,7 @@ struct ShareRootView: View {
     @State private var servers: ServerConfigList = ServerConfigList()
     @State private var trustInsecureCert: Bool = false
     @State private var selectedServerId: String?
+    @State private var prefillNote: String? = nil
 
     enum Phase: Equatable {
         case loadingAttachment
@@ -89,6 +97,13 @@ struct ShareRootView: View {
     @ViewBuilder
     private var readyForm: some View {
         Form {
+            if let note = prefillNote {
+                Section {
+                    Label(note, systemImage: "info.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Section(String(localized: "内容")) {
                 if let item {
                     contentRow(for: item)
@@ -255,7 +270,20 @@ struct ShareRootView: View {
         let trust = store.loadAppSettings().trustInsecureCert
         servers = loadedServers
         trustInsecureCert = trust
-        selectedServerId = loadedServers.activeConfigId ?? loadedServers.configs.first?.id
+
+        // Resolve initial selection: Sharing-Suggestions tap takes
+        // priority; if the tapped server has since been deleted we note
+        // it and fall back to the user's active server / first server.
+        if let pre = prefilledServerId {
+            if loadedServers.configs.contains(where: { $0.id == pre }) {
+                selectedServerId = pre
+            } else {
+                selectedServerId = loadedServers.activeConfigId ?? loadedServers.configs.first?.id
+                prefillNote = String(localized: "原服务器已不可用,已切换到当前活动服务器")
+            }
+        } else {
+            selectedServerId = loadedServers.activeConfigId ?? loadedServers.configs.first?.id
+        }
 
         guard let ctx = context else {
             phase = .failed(String(localized: "没有可分享的内容"))
@@ -264,7 +292,14 @@ struct ShareRootView: View {
         do {
             let extracted = try await ShareItemExtractor.extract(from: ctx)
             item = extracted
-            phase = .ready
+            // Direct-share fast path: the user already told iOS which
+            // server to use, so skip the picker entirely. `send()` sets
+            // `.uploading` itself.
+            if prefilledServerId != nil, prefillNote == nil, resolvedServer != nil {
+                await send()
+            } else {
+                phase = .ready
+            }
         } catch {
             phase = .failed((error as? LocalizedError)?.errorDescription ?? "\(error)")
         }

@@ -15,6 +15,17 @@
         }
       }
     },
+    "原服务器已不可用,已切换到当前活动服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The original server is no longer available; switched to the current active server."
+          }
+        }
+      }
+    },
     "「%@」是最后一台服务器。删除后将返回首次设置流程。" : {
 
     },

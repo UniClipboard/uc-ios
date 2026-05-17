@@ -280,6 +280,10 @@ private struct ServersListView: View {
             // UI shows.
             servers.activeConfigId = servers.configs.first?.id
         }
+        // Drop any Sharing-Suggestions tiles the system is showing for
+        // this server. Without this, iOS would keep suggesting a dead
+        // destination on the share sheet until the suggestion ages out.
+        ShareIntentDonation.deleteAllDonations(forServerId: server.id)
     }
 
     private func commit(draft: ServerDraft) {

@@ -236,7 +236,7 @@ final class SyncEngine {
                 return
             }
             // Push side.
-            try await maybePush(client: client, vm: vm)
+            try await maybePush(client: client, vm: vm, server: server)
         } catch let e as SyncError where e.kind == .authFailed {
             state = .authFailed
             lastError = e
@@ -290,7 +290,8 @@ final class SyncEngine {
 
     private func maybePush(
         client: SyncClipboardClient,
-        vm: AppViewModel
+        vm: AppViewModel,
+        server: ServerConfig
     ) async throws {
         guard let device = vm.deviceClipboard else {
             // Observer hasn't surfaced anything yet (cold start, env-hook
@@ -313,6 +314,12 @@ final class SyncEngine {
         }
         if let pushed = vm.serverLatest {
             advanceSynced(to: pushed.hash)
+            // Mirror the Share Extension's donation so iOS Sharing
+            // Suggestions ranks this server higher even when the user
+            // never explicitly invokes the share sheet — auto-sync
+            // counts as "sent to this server" too. Fire-and-forget so
+            // the next tick isn't blocked on IPC.
+            Task { await ShareIntentDonation.donateSend(to: server, clipboard: pushed) }
         }
         // No serverLatest after push = silent skip (no active config / no
         // pushable snapshot / type unsupported). Don't advance hash, but

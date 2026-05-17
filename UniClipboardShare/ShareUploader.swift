@@ -30,6 +30,11 @@ struct ShareUploader {
         if let hash = entry.hash, !hash.isEmpty {
             store.saveLastSyncedHash(hash)
         }
+
+        // Tell iOS Sharing Suggestions "the user just sent this to this
+        // server" so next time the share sheet ranks the server's
+        // contact tile higher. Best-effort: failures are swallowed inside.
+        await ShareIntentDonation.donateSend(to: server, summary: item.displayName)
     }
 
     private func build(from item: ShareItem) -> (clipboard: Clipboard, payload: Data?) {

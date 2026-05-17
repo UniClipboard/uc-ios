@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import Intents
 
 /// Principal class for the Share Extension. iOS instantiates this when the
 /// user picks UniClipboard from the system share sheet. We don't subclass
@@ -11,8 +12,22 @@ final class ShareViewController: UIViewController {
         super.viewDidLoad()
 
         let context = self.extensionContext
+        // If the user tapped a Sharing-Suggestions tile (the "contact" row
+        // we donate via INSendMessageIntent), iOS hands us the original
+        // intent back through `extensionContext.intent`. The first
+        // recipient's personHandle.value is the server id we stamped on
+        // the donation, so the SwiftUI layer can fast-path to "uploading"
+        // without showing the picker.
+        let prefilledServerId: String? = {
+            guard let sendMessage = context?.intent as? INSendMessageIntent,
+                  let handle = sendMessage.recipients?.first?.personHandle?.value,
+                  !handle.isEmpty else { return nil }
+            return handle
+        }()
+
         let root = ShareRootView(
             context: context.map(ShareExtensionContext.init),
+            prefilledServerId: prefilledServerId,
             onFinish: { [weak self] in
                 self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
             },
