@@ -11,14 +11,57 @@ import Foundation
 /// matches the forward-compat philosophy of `AppSettings.init(from:)` —
 /// stored data must never block app startup.
 public final class SettingsStore: @unchecked Sendable {
+    /// App Group container shared between the main app and the Share
+    /// Extension. Keep in sync with the `application-groups` entitlement
+    /// on both targets.
+    public static let appGroupID = "group.app.uniclipboard.UniClipboard"
+
     private let defaults: UserDefaults
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    public init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    /// - Parameter defaults: when nil (the default), the store opens the
+    ///   App Group suite (`appGroupID`) and one-shot-migrates any existing
+    ///   keys from `.standard` on first use. Falls back to `.standard` if
+    ///   the App Group entitlement isn't active. Tests pass an explicit
+    ///   ephemeral `UserDefaults(suiteName:)`.
+    public init(defaults: UserDefaults? = nil) {
+        let chosen: UserDefaults
+        if let defaults {
+            chosen = defaults
+        } else if let suite = UserDefaults(suiteName: SettingsStore.appGroupID) {
+            SettingsStore.migrateFromStandardIfNeeded(into: suite)
+            chosen = suite
+        } else {
+            chosen = .standard
+        }
+        self.defaults = chosen
         self.encoder = JSONEncoder()
         self.decoder = JSONDecoder()
+    }
+
+    /// One-shot migration from `.standard` to the App Group suite. Runs
+    /// the first time we open the suite after the App Group entitlement
+    /// is added: copies known keys over and removes them from `.standard`.
+    /// Idempotent — if any known key already exists in the suite the
+    /// migration is considered done and skipped, so a re-install can't be
+    /// overridden by a stale `.standard` blob.
+    private static func migrateFromStandardIfNeeded(into suite: UserDefaults) {
+        let keys = [
+            AppSettings.PersistenceKey.serverConfigList,
+            AppSettings.PersistenceKey.appSettings,
+            AppSettings.PersistenceKey.lastSyncedContentHash,
+            AppSettings.PersistenceKey.legacyServerConfig,
+        ]
+        for key in keys where suite.object(forKey: key) != nil {
+            return
+        }
+        let standard = UserDefaults.standard
+        for key in keys {
+            guard let value = standard.object(forKey: key) else { continue }
+            suite.set(value, forKey: key)
+            standard.removeObject(forKey: key)
+        }
     }
 
     // MARK: - ServerConfigList

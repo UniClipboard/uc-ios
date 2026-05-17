@@ -10,10 +10,13 @@ The wire protocol and persistence formats are normative: **`docs/SYNC_PROTOCOL.m
 
 ## Dual-build layout
 
-The repository builds two ways and shares source between them:
+The repository builds three ways and shares source between them:
 
-- **Xcode app target** (`UniClipboard.xcodeproj`) compiles everything under `UniClipboard/` via `PBXFileSystemSynchronizedRootGroup`. Drop a new `.swift`/`.xcstrings` file anywhere under `UniClipboard/` and Xcode picks it up — no pbxproj edit needed.
-- **SwiftPM library + tests** (`Package.swift` at the repo root) re-uses `UniClipboard/Models/` as a target source path so the model layer can be unit-tested via `swift test` without provisioning an in-Xcode test target. Tests live in `Tests/UniClipboardModelsTests/` and load fixtures from `docs/examples/` via `#filePath` — no resource copy or symlink.
+- **Xcode app target `UniClipboard`** (`UniClipboard.xcodeproj`) compiles everything under `UniClipboard/` and `Shared/` via `PBXFileSystemSynchronizedRootGroup`. Drop a new `.swift`/`.xcstrings` file under either root and Xcode picks it up — no pbxproj edit needed.
+- **Xcode share-extension target `UniClipboardShare`** compiles `Shared/` + `UniClipboardShare/`. The extension links nothing from `UniClipboard/` — anything it needs lives in `Shared/`. Two files inside `UniClipboardShare/` are excluded from the synchronized group via `PBXFileSystemSynchronizedBuildFileExceptionSet` (`Info.plist`, `UniClipboardShare.entitlements`) — without that, Xcode tries to both `ProcessInfoPlistFile` AND copy them as resources, hitting "Multiple commands produce" on the appex's `Info.plist`.
+- **SwiftPM library + tests** (`Package.swift` at the repo root) re-uses `Shared/Models/` and `Shared/Network/` as target source paths so model + network layers can be unit-tested via `swift test` without provisioning in-Xcode test targets. Tests live in `Tests/UniClipboardModels{Network,}Tests/` and load fixtures from `docs/examples/` via `#filePath` — no resource copy or symlink.
+
+The rule for `Shared/`: **pure Foundation, no UIKit / SwiftUI / CryptoKit-via-UIKit-only APIs**. The Share Extension's app-extension SDK rejects parts of UIKit (anything marked `API_UNAVAILABLE(macos)` is fine, anything `NS_EXTENSION_UNAVAILABLE` is not), and a SwiftPM `swift test` runs on macOS without UIKit at all. If something in `Shared/` ever needs platform code, gate it with `#if canImport(UIKit)` and keep callers happy on both sides.
 
 Don't try to add SwiftPM `.copy("Fixtures")` with a directory symlink — SwiftPM doesn't follow it. The `#filePath` approach was chosen specifically because it survives without any sync step.
 
@@ -36,7 +39,7 @@ xcodebuild -scheme UniClipboard -sdk iphonesimulator \
 swift test --filter FixturesTests/test_clipboardNoHash_optionalKeysAreOmittedNotNullified
 ```
 
-Bundle id: `app.uniclipboard.UniClipboard`. Deployment target iOS 26.2. Swift 5 mode; `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` is on for the app target (so newly-written types in `UniClipboard/` are MainActor-isolated by default; the SwiftPM `Models` target is unisolated).
+Bundle ids: `app.uniclipboard.UniClipboard` (app) + `app.uniclipboard.UniClipboard.Share` (extension). Deployment target iOS 26.2. Swift 5 mode; `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` is on for both Xcode targets (so newly-written types under `UniClipboard/`, `UniClipboardShare/`, and `Shared/` are MainActor-isolated when compiled into either Xcode target). The SwiftPM `UniClipboardModels` / `UniClipboardNetwork` targets compile the same `Shared/` files unisolated — anything in `Shared/` that needs to run off-main must say so explicitly (`nonisolated`, an actor, or a non-MainActor class).
 
 ## Screenshots / debug runs
 
@@ -76,7 +79,7 @@ STUB_MODE=401 scripts/sync-stub-server.py    # any int → that HTTP status
 STUB_PORT=9000 scripts/sync-stub-server.py
 ```
 
-To point a configured iOS simulator at the stub from outside the app, the value must be (a) `Data`, not `String` — `SettingsStore` reads `Data`; and (b) written into the **app's sandboxed prefs**, not the simulator user-domain plist. `xcrun simctl spawn booted defaults write app.uniclipboard.UniClipboard …` looks like it should work but writes to the wrong location — iOS apps read from `<container>/Library/Preferences/<bundle>.plist` (sandboxed). cfprefsd caches the sandbox plist on first read, so the only reliable recipe is **uninstall → install → pre-seed → launch**:
+To point a configured iOS simulator at the stub from outside the app, the value must be (a) `Data`, not `String` — `SettingsStore` reads `Data`; and (b) written into the **App Group container's prefs**, not the app's sandboxed prefs or the simulator user-domain plist. Since the Share Extension landed, `SettingsStore()` defaults to `UserDefaults(suiteName: "group.app.uniclipboard.UniClipboard")` so both processes see the same data. `xcrun simctl spawn booted defaults write …` writes the wrong plist; the per-app sandboxed plist is no longer read at all (except by the one-shot `.standard → group` migration on first launch). cfprefsd caches the suite plist on first read, so the only reliable recipe is **uninstall → install → pre-seed group container → launch**:
 
 ```bash
 APP="$(xcodebuild -scheme UniClipboard -sdk iphonesimulator -showBuildSettings 2>/dev/null \
@@ -84,7 +87,7 @@ APP="$(xcodebuild -scheme UniClipboard -sdk iphonesimulator -showBuildSettings 2
 
 SCL='{"configs":[{"id":"stub","url":"http://127.0.0.1:8033/","username":"u","password":"p","autoSwitchWifiNames":[]}],"activeConfigId":"stub"}'
 
-# 1. Build a binary plist with server_config_list as Data.
+# 1. Build a plist with server_config_list as Data.
 cat > /tmp/uc-prefs.xml <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -96,35 +99,64 @@ cat > /tmp/uc-prefs.xml <<EOF
 </plist>
 EOF
 
-# 2. Reset the sandbox so cfprefsd starts clean, then drop our plist in.
+# 2. Reset, then drop the plist into the App Group container (not the
+# per-app sandbox). The group container only exists after install, and
+# its UUID is per-device — query simctl for the path.
 xcrun simctl uninstall booted app.uniclipboard.UniClipboard
 xcrun simctl install   booted "$APP"
-CONTAINER=$(xcrun simctl get_app_container booted app.uniclipboard.UniClipboard data)
-mkdir -p "$CONTAINER/Library/Preferences"
-plutil -convert binary1 -o "$CONTAINER/Library/Preferences/app.uniclipboard.UniClipboard.plist" /tmp/uc-prefs.xml
+GROUP=$(xcrun simctl get_app_container booted app.uniclipboard.UniClipboard \
+        group group.app.uniclipboard.UniClipboard)
+mkdir -p "$GROUP/Library/Preferences"
+plutil -convert binary1 \
+  -o "$GROUP/Library/Preferences/group.app.uniclipboard.UniClipboard.plist" \
+  /tmp/uc-prefs.xml
 
 # 3. Launch with whatever env hooks you need (NOT --setenv).
 SIMCTL_CHILD_UC_AUTO_APPLY=1 xcrun simctl launch booted app.uniclipboard.UniClipboard
 ```
 
-The legacy `server_config` key (pre-multi-server) doesn't need an explicit delete — `uninstall` wiped the whole sandbox already, and the new plist we drop in only carries `server_config_list`, so §5.5 migration sees no source data and stays out of the way.
+The legacy `server_config` key (pre-multi-server) doesn't need an explicit delete — `uninstall` wiped the whole sandbox already, and the new plist we drop in only carries `server_config_list`, so §5.5 migration sees no source data and stays out of the way. The `.standard → group` migration in `SettingsStore.init` is similarly idempotent: it short-circuits the moment it sees any known key already in the suite, so re-running this recipe doesn't fight it.
 
 iOS 14+ ATS lets `127.0.0.1` through without an Info.plist exception, so plain HTTP works against the stub from the simulator.
 
 ## Architecture
 
 ```
-UniClipboard/
-├── Models/         # Pure-Foundation Codable types — also the SwiftPM target
-├── Mock/           # In-memory fake state (servers / clipboard / history)
+Shared/                     # Compiled into BOTH Xcode targets + the SwiftPM
+│                           # packages. Pure Foundation, no UIKit/SwiftUI.
+├── Models/                 # Clipboard, ServerConfig, AppSettings, SettingsStore,
+│                           # ServerNameGenerator. Also the SwiftPM
+│                           # UniClipboardModels target.
+└── Network/                # SyncClipboardClient, SyncError, ConnectionTester.
+                            # Also the SwiftPM UniClipboardNetwork target.
+
+UniClipboard/               # Main app target — UIKit/SwiftUI surface.
+├── Pasteboard/             # UIPasteboard observer + UTI snapshot.
+├── Sync/                   # SyncEngine (1Hz foreground tick) + SSID provider.
+├── Mock/                   # In-memory fake state (servers / clipboard / history).
 ├── Views/
-│   ├── Setup/      # First-run flow (Welcome → ServerForm → AutoSwitch)
-│   └── *.swift     # HomeView, HistoryView, SettingsView, components
-├── Localizable.xcstrings  # zh-Hans source, en translation
-└── ContentView.swift      # Root: SetupFlow when configs.isEmpty, else TabView
+│   ├── Setup/              # First-run flow (Welcome → ServerForm → AutoSwitch).
+│   └── *.swift             # HomeView, HistoryView, SettingsView, components.
+├── Localizable.xcstrings   # zh-Hans source, en translation.
+├── AppViewModel.swift      # @Observable @MainActor root view-model.
+├── ContentView.swift       # Root: SetupFlow when configs.isEmpty, else TabView.
+└── UniClipboard.entitlements  # App Group + wifi-info entitlement.
+
+UniClipboardShare/          # Share Extension target — receives system-share
+│                           # attachments and pushes them to the active server.
+├── Info.plist              # NSExtension manifest (NSExtensionPointIdentifier
+│                           # = com.apple.share-services). Excluded from the
+│                           # synchronized group via membershipExceptions.
+├── UniClipboardShare.entitlements  # Same App Group; excluded same way.
+├── ShareViewController.swift  # Principal class (UIViewController hosting SwiftUI).
+├── ShareRootView.swift     # SwiftUI sheet: server picker + content preview + send.
+├── ShareItem.swift         # NSItemProvider extraction (URL > text > image > file).
+└── ShareUploader.swift     # §3.5 file-first PUT; advances lastSyncedContentHash
+                            # in the App Group so the main app's SyncEngine
+                            # doesn't echo the just-pushed entry back to device.
 ```
 
-`ContentView` is the routing root: it switches between `SetupFlowView` and the three-tab `TabView` based on whether `servers.configs.isEmpty`. There is **no global app state container yet** — `ContentView` owns `@State` for `servers` and `appSettings` and threads bindings down. When wiring real persistence, replace these with a single observable view-model bound to `UserDefaults` keys defined in `AppSettings.PersistenceKey` (see §5.5 of the protocol spec).
+`ContentView` is the routing root: it switches between `SetupFlowView` and the three-tab `TabView` based on whether `servers.configs.isEmpty`. `AppViewModel` owns the engine, observer, and SSID provider; views bind via `@Bindable`. Persistence is `SettingsStore` (App Group), keyed by `AppSettings.PersistenceKey` (see §5.4–§5.5 of the protocol spec).
 
 Key model invariants (failures here will be caught by `FixturesTests`):
 
@@ -132,6 +164,30 @@ Key model invariants (failures here will be caught by `FixturesTests`):
 - `hash` is uppercase 64-char hex SHA-256. Whitespace-only strings are normalized to `nil` on decode (so the encoder omits the key, not write `""`).
 - `ServerConfigList.activeConfig` falls back to `configs[0]` when `activeConfigId` doesn't resolve, and to `nil` when `configs` is empty (network code MUST refuse to make calls in the latter case).
 - `LegacyServerConfig.migrated()` is the exact one-shot path for users coming from the pre-multi-server format. The new key (`server_config_list`) replaces the old key (`server_config`) — see §5.5.
+
+## App Group
+
+Both Xcode targets carry `application-groups = ["group.app.uniclipboard.UniClipboard"]` in their entitlements (`UniClipboard/UniClipboard.entitlements`, `UniClipboardShare/UniClipboardShare.entitlements`). The constant lives once in code as `SettingsStore.appGroupID` — keep all three in sync if it ever moves.
+
+`SettingsStore.init(defaults: UserDefaults? = nil)` defaults to `UserDefaults(suiteName: appGroupID)` and falls back to `.standard` only when the entitlement isn't active (e.g., the SwiftPM `swift test` harness, where the constant resolves but the suite is just a regular plist on disk). Tests inject an ephemeral `UserDefaults(suiteName:)` of their own — never `.standard`.
+
+**One-shot migration**: the first time the suite is opened on an upgraded install, `migrateFromStandardIfNeeded(into:)` copies `server_config_list`, `app_settings`, `last_synced_content_hash`, and the legacy `server_config` from `.standard` → suite and removes the originals. It's gated on "no known key already present in the suite", so re-installs after the migration are no-ops and a `defaults write` into the suite from a test recipe won't be overwritten by stale `.standard` data.
+
+**Share Extension write coordination**: when the extension successfully uploads a new clipboard entry it writes the entry's hash to `last_synced_content_hash` *before* returning. The main app's `SyncEngine`, on next tick, sees `server.hash == lastSyncedContentHash` and treats the entry as already synced — so we don't ping-pong the just-shared content back into the device UIPasteboard (which would trigger iOS's "Allow Paste" prompt for no benefit).
+
+## Share Extension
+
+The `UniClipboardShare` target is a share-services extension. When the user picks UniClipboard from the system share sheet:
+
+1. iOS instantiates `ShareViewController` (`NSExtensionPrincipalClass = $(PRODUCT_MODULE_NAME).ShareViewController`). We host a `UIHostingController(rootView: ShareRootView(...))` instead of subclassing `SLComposeServiceViewController` — the compose-style chrome doesn't fit the server-picker + preview UX.
+2. `ShareRootView` loads servers + the `trustInsecureCert` flag from the App Group `SettingsStore`, then `ShareItemExtractor.extract(from:)` pulls one attachment (URL > text > image > file priority) using `NSItemProvider.loadItem(forTypeIdentifier:completionHandler:)`.
+3. On `发送`, `ShareUploader.upload(_:to:trustInsecureCert:)` runs the §3.5 file-first sequence: `putFile(name:body:)` if `hasData`, then `putClipboard(_:)`. On success it writes `lastSyncedContentHash` and dismisses via `extensionContext.completeRequest`.
+
+`NSExtensionActivationRule` in `Info.plist` filters to: text (any count), URL (max 1), image (max 1), file (max 1). iOS evaluates this against attachment UTIs before showing UniClipboard in the share sheet; bumping the limits or adding new categories is a plist-only change.
+
+**Manual verification** (simctl has no synthetic-tap, so this is the only path): build + install + open Safari → share button → look for UniClipboard. For files, share from the Files app; for images, from Photos. Inside the sheet, confirm the server name + content preview + size are correct, then 发送; the main app's `SyncEngine` should reflect the new entry within ~1s of being foregrounded.
+
+**Don't put UIKit-specific code in `Shared/`** — the extension links against the app-extension SDK, which rejects `NS_EXTENSION_UNAVAILABLE` APIs (e.g., `UIApplication.shared`). Keep extension-specific UI/IO under `UniClipboardShare/`.
 
 ## i18n
 

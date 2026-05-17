@@ -6,8 +6,37 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4DB1000C2FB1E000B8F901 /* UniClipboardShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4DB100012FB1E000B8F901 /* UniClipboardShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4DB1000A2FB1E000B8F901 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4D479E032FAEAE5B00B8F825 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4DB100032FB1E000B8F901;
+			remoteInfo = UniClipboardShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4DB1000D2FB1E000B8F901 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				4DB1000C2FB1E000B8F901 /* UniClipboardShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		4D479E0B2FAEAE5B00B8F825 /* UniClipboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UniClipboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4DB100012FB1E000B8F901 /* UniClipboardShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UniClipboardShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +45,41 @@
 			path = UniClipboard;
 			sourceTree = "<group>";
 		};
+		4DA5D0012FB1DEAD00C8F901 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		4DB100022FB1E000B8F901 /* UniClipboardShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4DB1000E2FB1E000B8F901 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+			path = UniClipboardShare;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4DB1000E2FB1E000B8F901 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				UniClipboardShare.entitlements,
+			);
+			target = 4DB100032FB1E000B8F901 /* UniClipboardShare */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		4D479E082FAEAE5B00B8F825 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DB100052FB1E000B8F901 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -32,7 +92,9 @@
 		4D479E022FAEAE5B00B8F825 = {
 			isa = PBXGroup;
 			children = (
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
 				4D479E0D2FAEAE5B00B8F825 /* UniClipboard */,
+				4DB100022FB1E000B8F901 /* UniClipboardShare */,
 				4D479E0C2FAEAE5B00B8F825 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				4D479E0B2FAEAE5B00B8F825 /* UniClipboard.app */,
+				4DB100012FB1E000B8F901 /* UniClipboardShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -55,13 +118,16 @@
 				4D479E072FAEAE5B00B8F825 /* Sources */,
 				4D479E082FAEAE5B00B8F825 /* Frameworks */,
 				4D479E092FAEAE5B00B8F825 /* Resources */,
+				4DB1000D2FB1E000B8F901 /* Embed Foundation Extensions */,
 				4D8A0E012FB1ABCD00C8F901 /* Patch Info.plist (UIFileSharingEnabled + ATS LAN + LocalNetworkUsage + CameraUsage + LocationUsage) */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4DB1000B2FB1E000B8F901 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
 				4D479E0D2FAEAE5B00B8F825 /* UniClipboard */,
 			);
 			name = UniClipboard;
@@ -70,6 +136,29 @@
 			productName = UniClipboard;
 			productReference = 4D479E0B2FAEAE5B00B8F825 /* UniClipboard.app */;
 			productType = "com.apple.product-type.application";
+		};
+		4DB100032FB1E000B8F901 /* UniClipboardShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4DB100072FB1E000B8F901 /* Build configuration list for PBXNativeTarget "UniClipboardShare" */;
+			buildPhases = (
+				4DB100042FB1E000B8F901 /* Sources */,
+				4DB100052FB1E000B8F901 /* Frameworks */,
+				4DB100062FB1E000B8F901 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
+				4DB100022FB1E000B8F901 /* UniClipboardShare */,
+			);
+			name = UniClipboardShare;
+			packageProductDependencies = (
+			);
+			productName = UniClipboardShare;
+			productReference = 4DB100012FB1E000B8F901 /* UniClipboardShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -82,6 +171,9 @@
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					4D479E0A2FAEAE5B00B8F825 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					4DB100032FB1E000B8F901 = {
 						CreatedOnToolsVersion = 26.2;
 					};
 				};
@@ -102,12 +194,20 @@
 			projectRoot = "";
 			targets = (
 				4D479E0A2FAEAE5B00B8F825 /* UniClipboard */,
+				4DB100032FB1E000B8F901 /* UniClipboardShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		4D479E092FAEAE5B00B8F825 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DB100062FB1E000B8F901 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -147,7 +247,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4DB100042FB1E000B8F901 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4DB1000B2FB1E000B8F901 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4DB100032FB1E000B8F901 /* UniClipboardShare */;
+			targetProxy = 4DB1000A2FB1E000B8F901 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		4D479E142FAEAE5C00B8F825 /* Debug */ = {
@@ -339,6 +454,68 @@
 			};
 			name = Release;
 		};
+		4DB100082FB1E000B8F901 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = UniClipboardShare/UniClipboardShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UniClipboardShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClipboard;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4DB100092FB1E000B8F901 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = UniClipboardShare/UniClipboardShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UniClipboardShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClipboard;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -356,6 +533,15 @@
 			buildConfigurations = (
 				4D479E172FAEAE5C00B8F825 /* Debug */,
 				4D479E182FAEAE5C00B8F825 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4DB100072FB1E000B8F901 /* Build configuration list for PBXNativeTarget "UniClipboardShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4DB100082FB1E000B8F901 /* Debug */,
+				4DB100092FB1E000B8F901 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

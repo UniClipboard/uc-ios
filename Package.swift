@@ -19,7 +19,7 @@ let package = Package(
     targets: [
         .target(
             name: "UniClipboardModels",
-            path: "UniClipboard/Models"
+            path: "Shared/Models"
         ),
         .testTarget(
             name: "UniClipboardModelsTests",
@@ -32,7 +32,7 @@ let package = Package(
         .target(
             name: "UniClipboardNetwork",
             dependencies: ["UniClipboardModels"],
-            path: "UniClipboard/Network"
+            path: "Shared/Network"
         ),
         .testTarget(
             name: "UniClipboardNetworkTests",

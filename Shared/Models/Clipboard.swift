@@ -154,6 +154,41 @@ public extension Clipboard {
         return (entry, bytes)
     }
 
+    /// §3.3 + §4.2 — produce the publishable Clipboard + payload bytes for
+    /// an arbitrary file (used by the Share Extension when the user shares
+    /// a Files-app document). `name` is sanitized to a bytewise basename —
+    /// `SyncClipboardClient.putFile` rejects `/` and `\`. `text` mirrors
+    /// the basename per §3.3 (non-text `text` = label). Hash binds basename
+    /// + bytes per §4.2; `hasData=true`; `size` is the byte length.
+    static func publishFile(name: String, bytes: Data) -> (clipboard: Clipboard, payload: Data) {
+        let safe = sanitizedFilename(name)
+        let entry = Clipboard(
+            type: .file,
+            hash: computeFileHash(name: safe, bytes: bytes),
+            text: safe,
+            hasData: true,
+            dataName: safe,
+            size: bytes.count
+        )
+        return (entry, bytes)
+    }
+
+    /// Strip path components from a filename and reject empty results.
+    /// Mirrors the bytewise `basename` used in §4.2 hashing — does not
+    /// percent-decode or normalize. Falls back to `"file"` when the
+    /// stripped name is empty or whitespace-only.
+    static func sanitizedFilename(_ raw: String) -> String {
+        var name = raw
+        if let i = name.lastIndex(of: "/") {
+            name = String(name[name.index(after: i)...])
+        }
+        if let i = name.lastIndex(of: "\\") {
+            name = String(name[name.index(after: i)...])
+        }
+        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "file" : name
+    }
+
     static func publishText(_ text: String) -> (clipboard: Clipboard, payload: Data?) {
         let threshold = 10_240
         let hash = computeTextHash(text)
