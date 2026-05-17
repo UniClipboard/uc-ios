@@ -12,3 +12,7 @@ Package.resolved
 # macOS
 .DS_Store
 UniClipboard.xcodeproj/xcuserdata
+
+# Debug-runtime artifact: App Group plist pulled out via simctl recipe
+# (see CLAUDE.md "Local stub server"). Not source.
+devices/
