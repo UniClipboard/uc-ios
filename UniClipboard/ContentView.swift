@@ -46,6 +46,11 @@ struct ContentView: View {
         }
         .tint(.indigo)
         .task {
+            // Unblock pasteboard reads before the engine ticks — the
+            // engine's push path reads UIPasteboard via snapshot(), and
+            // gating activation here is what defers the iOS "Allow Paste"
+            // prompt past the Setup flow into the home tab.
+            vm.activatePasteboard()
             vm.engine.start()
             // simctl regression hooks — not feature flags. The engine
             // already handles push/apply automatically via the 1Hz loop;

@@ -58,14 +58,39 @@ final class DevicePasteboardObserver {
     @ObservationIgnored
     private var lastWriteChangeCount: Int = -1
 
+    /// Gate that defers the first live `UIPasteboard.general` access until
+    /// the UI explicitly calls `activate()`. Without this, the observer
+    /// reads at init (and again on `didBecomeActiveNotification` during the
+    /// initial activation), which fires iOS 16+'s "Allow Paste" prompt
+    /// before the user has any visual context — they see the system alert
+    /// over a splash / Setup flow they're still trying to read. Env-driven
+    /// modes never touch `UIPasteboard.general`, so they auto-activate in
+    /// init and previews / screenshot recipes keep working unchanged.
+    @ObservationIgnored
+    private var isActive: Bool = false
+
     init(
         notificationCenter: NotificationCenter = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.notificationCenter = notificationCenter
         self.envMode = EnvMode(environment: environment)
-        read()
         subscribe()
+        if case .live = envMode {
+            // Defer first read to activate() — see `isActive`.
+        } else {
+            isActive = true
+            read()
+        }
+    }
+
+    /// Permit pasteboard reads and perform the initial read. Call once
+    /// the home tab is on screen so the iOS "Allow Paste" prompt fires
+    /// in a context the user can reason about. Idempotent — subsequent
+    /// calls just re-read (cheap and useful when re-entering foreground).
+    func activate() {
+        isActive = true
+        read()
     }
 
     /// Write `text` to `UIPasteboard.general`. We adopt `current` to the
@@ -129,6 +154,7 @@ final class DevicePasteboardObserver {
     /// out so we don't re-canonicalize basename. External copies advance
     /// changeCount further and fall through to the fresh read.
     func read() {
+        guard isActive else { return }
         if case .live = envMode,
            UIPasteboard.general.changeCount == lastWriteChangeCount {
             return
@@ -142,6 +168,7 @@ final class DevicePasteboardObserver {
     /// which closes the race where the user copies a new item between an
     /// observer notification firing and the push action firing.
     func snapshot() -> DeviceClipboardSnapshot? {
+        guard isActive else { return nil }
         switch envMode {
         case .live:
             return liveSnapshot()

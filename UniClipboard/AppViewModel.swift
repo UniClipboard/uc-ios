@@ -186,6 +186,11 @@ final class AppViewModel {
     /// re-read automatically.
     func readPasteboard() { pasteboard.read() }
 
+    /// Permit pasteboard reads. Call once the main tabs are on screen so
+    /// the iOS 16+ "Allow Paste" prompt fires after the user has visual
+    /// context, not during cold launch / Setup. Idempotent.
+    func activatePasteboard() { pasteboard.activate() }
+
     /// Re-copy a historical text entry back onto the device pasteboard.
     /// The observer adopts the new value immediately, so the next
     /// `SyncEngine` tick will publish it as the current clipboard via
