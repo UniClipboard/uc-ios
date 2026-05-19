@@ -21,7 +21,13 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
+        // Read inside body so the Observation framework registers
+        // `ContentView` as an observer of `ShortcutInbox.shared.pending`
+        // — without this read, `.onChange` would never fire when the
+        // delegate writes a runtime shortcut invocation.
+        let pendingShortcut = ShortcutInbox.shared.pending
+
+        return Group {
             if vm.servers.configs.isEmpty {
                 SetupFlowView(vm: vm) {
                     // No-op: ContentView re-renders to TabView once configs is non-empty.
@@ -39,6 +45,17 @@ struct ContentView: View {
         //     and seeds the prefilled form step.
         //   • Tabs branch shows `ConnectImportSheet` below.
         .onOpenURL { vm.handleIncomingURL($0) }
+        // Runtime path: app already on screen when a quick action fires.
+        // The delegate writes to the inbox, body re-renders, onChange
+        // sees the transition and dispatches. `initial: true` covers the
+        // cold-launch case where the delegate wrote *before* SwiftUI
+        // mounted, so `pendingShortcut` is non-nil on the very first
+        // body evaluation and no nil→value transition will occur.
+        .onChange(of: pendingShortcut, initial: true) { _, action in
+            guard let action else { return }
+            ShortcutInbox.shared.pending = nil
+            Task { await vm.runShortcut(action) }
+        }
         // Confirmation sheet — only meaningful when configs is non-empty.
         // While in Setup, the SetupFlowView's `.task(id:)` consumes
         // `pendingImport` first, so the sheet binding never fires.

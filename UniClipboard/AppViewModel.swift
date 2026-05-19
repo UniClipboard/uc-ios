@@ -698,6 +698,35 @@ extension AppViewModel {
         }
     }
 
+    /// Run a Home Screen quick-action. The router lives here (not on the
+    /// `ShortcutInbox` or the delegate) because every branch needs the
+    /// view-model's network/state machinery — `push()`, `refresh()`, and
+    /// `applyServerToDevice()` already enforce their own in-flight guards
+    /// and error surfaces, so the shortcut path inherits those for free.
+    ///
+    /// No active server → no-op. The root view is already showing the
+    /// SetupFlow because `configs.isEmpty`, so cold-launching via a tile
+    /// already lands the user in the configuration flow; we just discard
+    /// the action rather than letting it replay after setup completes
+    /// and surprise the user with an unexpected push/pull.
+    ///
+    /// The pull branch gates `applyServerToDevice()` on a successful
+    /// `refresh()`: on failure `refreshError` is set and `serverLatest`
+    /// keeps its prior value (stale > blank), and we don't want a
+    /// shortcut tap to silently paste content from a prior session.
+    func runShortcut(_ action: ShortcutAction) async {
+        guard !servers.configs.isEmpty else { return }
+        switch action {
+        case .push:
+            await push()
+        case .pull:
+            await refresh()
+            if refreshError == nil, serverLatest != nil {
+                await applyServerToDevice()
+            }
+        }
+    }
+
     /// Builds a VM bound to an isolated `UserDefaults` suite — for use in
     /// `#Preview` blocks so previews don't read or write `.standard`.
     /// `deviceText: nil` keeps the device pasteboard empty in the preview;
