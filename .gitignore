@@ -6,3 +6,23 @@ out
 next-env.d.ts
 .env*.local
 .build
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+DerivedData/
+build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+Packages/
+Package.resolved
+.swiftpm/
+
+# Local simulator / device dumps
+devices/
