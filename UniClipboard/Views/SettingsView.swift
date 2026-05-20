@@ -854,5 +854,4 @@ private struct AboutView: View {
     return NavigationStack(path: $path) {
         SettingsView(vm: .preview(), path: $path)
     }
-    .tint(.indigo)
 }

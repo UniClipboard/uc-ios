@@ -161,7 +161,6 @@ struct HomeView: View {
                                     } label: {
                                         Label("保存", systemImage: "square.and.arrow.down")
                                     }
-                                    .tint(.indigo)
                                 }
                             }
                             .contextMenu {
@@ -404,7 +403,7 @@ private struct ClipboardRow: View {
         HStack(spacing: 6) {
             Image(systemName: item.direction == .pulled ? "arrow.down" : "arrow.up")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(item.direction == .pulled ? Color.blue : Color.indigo)
+                .foregroundStyle(item.direction == .pulled ? Color.blue : Color.accentColor)
             Text(item.timestamp.relativeShort)
             if let size = item.entry.size {
                 Text("·").foregroundStyle(.tertiary)
@@ -439,7 +438,7 @@ private struct PendingBanner: View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.title3)
-                .foregroundStyle(.indigo)
+                .foregroundStyle(.tint)
             Text("服务器有新内容")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.primary)
@@ -451,12 +450,11 @@ private struct PendingBanner: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .tint(.indigo)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
-            Color.indigo.opacity(0.12),
+            Color.accentColor.opacity(0.12),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .padding(.horizontal, 16)
@@ -857,12 +855,10 @@ private func previewVM(history: [ClipboardHistoryItem]? = nil) -> AppViewModel {
     NavigationStack {
         HomeView(vm: previewVM())
     }
-    .tint(.indigo)
 }
 
 #Preview("Home — 空状态") {
     NavigationStack {
         HomeView(vm: previewVM(history: []))
     }
-    .tint(.indigo)
 }

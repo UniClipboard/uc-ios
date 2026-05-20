@@ -194,7 +194,7 @@ struct ShareRootView: View {
                 iconBadge(systemName: "photo", tint: .pink)
             }
         case .file:
-            iconBadge(systemName: "doc", tint: .indigo)
+            iconBadge(systemName: "doc", tint: .orange)
         }
     }
 

@@ -32,11 +32,16 @@ struct ContentView: View {
                 SetupFlowView(vm: vm) {
                     // No-op: ContentView re-renders to TabView once configs is non-empty.
                 }
-                .tint(.indigo)
             } else {
                 mainTabs
             }
         }
+        // Lock the whole app to the dark color scheme so the system
+        // grouped backgrounds line up with the app icon's near-black
+        // tone (#15171C) — the brand identity is "ghost on dark", not
+        // a generic indigo accent. Share-extension UI runs in its own
+        // process and is locked independently in ShareRootView.
+        .preferredColorScheme(.dark)
         // `.onOpenURL` fires on the root regardless of which branch is on
         // screen, including while a sheet/modal is up. The dispatcher in
         // AppViewModel stages the parsed payload (or error) into
@@ -94,7 +99,6 @@ struct ContentView: View {
                 }
             }
         }
-        .tint(.indigo)
         .task {
             // Unblock pasteboard reads before the engine ticks — the
             // engine's push path reads UIPasteboard via snapshot(), and

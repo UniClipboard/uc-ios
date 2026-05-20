@@ -121,7 +121,7 @@ private struct WelcomeStepView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [.indigo.opacity(0.18), .purple.opacity(0.08), .clear],
+                colors: [Color.accentColor.opacity(0.10), .clear],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -132,11 +132,11 @@ private struct WelcomeStepView: View {
 
                 ZStack {
                     Circle()
-                        .fill(.indigo.gradient.opacity(0.18))
+                        .fill(Color.accentColor.opacity(0.12))
                         .frame(width: 168, height: 168)
                     Image(systemName: "qrcode.viewfinder")
                         .font(.system(size: 72, weight: .semibold))
-                        .foregroundStyle(.indigo.gradient)
+                        .foregroundStyle(.tint)
                 }
                 .padding(.bottom, 36)
 
