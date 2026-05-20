@@ -237,7 +237,15 @@
       }
     },
     "从 UniClipboard 服务器拉取最新的剪贴板内容,写入到本机剪贴板。" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull the latest clipboard content from your UniClipboard server and write it to this device's clipboard."
+          }
+        }
+      }
     },
     "从下方推送你的第一份内容" : {
       "extractionState" : "manual",
@@ -506,7 +514,15 @@
       }
     },
     "剪贴板为空,没有可发送的内容" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clipboard is empty — nothing to send"
+          }
+        }
+      }
     },
     "协议" : {
       "extractionState" : "manual",
@@ -553,10 +569,26 @@
       }
     },
     "发送" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send"
+          }
+        }
+      }
     },
     "发送剪贴板" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send Clipboard"
+          }
+        }
+      }
     },
     "取消" : {
       "extractionState" : "manual",
@@ -823,7 +855,15 @@
       }
     },
     "已发送到 %@" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent to %@"
+          }
+        }
+      }
     },
     "已同步" : {
       "extractionState" : "manual",
@@ -848,7 +888,15 @@
       }
     },
     "已接收最新内容到本机剪贴板" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latest content received to device clipboard"
+          }
+        }
+      }
     },
     "已添加" : {
       "extractionState" : "manual",
@@ -1037,6 +1085,17 @@
         }
       }
     },
+    "手动输入服务器信息" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter server details manually"
+          }
+        }
+      }
+    },
     "打开设置" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1059,6 +1118,17 @@
         }
       }
     },
+    "扫描二维码添加" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add by scanning QR code"
+          }
+        }
+      }
+    },
     "扫描到 UniClipboard 配对二维码,确认添加此服务器吗?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1070,8 +1140,27 @@
         }
       }
     },
+    "扫描桌面端的配对二维码,几秒钟完成连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan the desktop pairing QR code to connect in seconds"
+          }
+        }
+      }
+    },
     "把这台设备当前的剪贴板发到 UniClipboard 服务器,供其他设备接收。" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send this device's current clipboard to your UniClipboard server for other devices to receive."
+          }
+        }
+      }
     },
     "换一个名称" : {
       "extractionState" : "manual",
@@ -1107,10 +1196,26 @@
       }
     },
     "接收" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive"
+          }
+        }
+      }
     },
     "接收剪贴板" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive Clipboard"
+          }
+        }
+      }
     },
     "接收超时 — 请稍后重试" : {
       "extractionState" : "manual",
@@ -1267,13 +1372,37 @@
       }
     },
     "服务器上还没有任何内容" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing on the server yet"
+          }
+        }
+      }
     },
     "服务器最新内容是文件或多类型组合,无法直接粘贴到剪贴板" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server's latest item is a file or multi-type bundle that can't be pasted directly"
+          }
+        }
+      }
     },
     "服务器最新内容没有图像数据" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server's latest item has no image data"
+          }
+        }
+      }
     },
     "服务器列表" : {
       "extractionState" : "manual",
@@ -1782,7 +1911,15 @@
       }
     },
     "请先在 UniClipboard 中添加一台服务器" : {
-
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a server in UniClipboard first"
+          }
+        }
+      }
     },
     "请填写 URL、用户名和密码" : {
       "extractionState" : "manual",
