@@ -447,6 +447,7 @@ private struct PendingBanner: View {
             Button(action: onApply) {
                 Text("应用")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color(.systemBackground))
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)

@@ -164,6 +164,12 @@ private struct WelcomeStepView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
+                        // AccentColor is near-black in light mode but
+                        // ivory in dark mode, so the default white
+                        // borderedProminent label gives no contrast on
+                        // dark. systemBackground flips with appearance
+                        // and lands on the correct contrasting tone.
+                        .foregroundStyle(Color(.systemBackground))
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -460,6 +466,7 @@ private struct AutoSwitchStepView: View {
                     Text("完成")
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)
+                        .foregroundStyle(Color(.systemBackground))
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
