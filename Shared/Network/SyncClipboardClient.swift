@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 #if canImport(UniClipboardModels)
 // SwiftPM build: model types live in a separate target. The Xcode app
 // target compiles everything as one module, so no import is needed —
@@ -6,6 +7,8 @@ import Foundation
 // the local SwiftPM package.
 import UniClipboardModels
 #endif
+
+private let log = Logger(subsystem: "app.uniclipboard", category: "network")
 
 /// HTTP client for the SyncClipboard wire protocol.
 /// Spec: docs/SYNC_PROTOCOL.md §1–§3 (read path only this cycle).
@@ -202,12 +205,26 @@ public final class SyncClipboardClient: @unchecked Sendable {
 
     // MARK: - Internals
 
-    private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
+    private func perform(_ req: URLRequest, attempt: Int = 1) async throws -> (Data, URLResponse) {
         do {
             return try await session.data(for: req)
         } catch let e as URLError {
+            // -1005 networkConnectionLost / -1001 timedOut: iOS 进程内
+            // NWConnection / NECP 路径会僵在 dead state — 即使新建
+            // ephemeral URLSession 也会复用上一段坏 path，连续命中同样
+            // 的错误，必须重启 app 才恢复。Apple 在 forums/thread/660771
+            // 给的官方 workaround 是延迟 ~300ms 重试一次：二次请求会
+            // 重新走 path 评估，多数情况下能拿到 fresh connection。
+            let retriable: Set<URLError.Code> = [.networkConnectionLost, .timedOut]
+            if attempt == 1, retriable.contains(e.code) {
+                log.warning("perform: URLError \(e.code.rawValue, privacy: .public) on \(req.httpMethod ?? "?", privacy: .public) \(req.url?.absoluteString ?? "?", privacy: .public) — retrying once after 300ms")
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                return try await perform(req, attempt: 2)
+            }
+            log.error("perform: URLError \(e.code.rawValue, privacy: .public) on \(req.httpMethod ?? "?", privacy: .public) \(req.url?.absoluteString ?? "?", privacy: .public) attempt=\(attempt, privacy: .public): \(e.localizedDescription, privacy: .public)")
             throw SyncError.mapURLError(e)
         } catch {
+            log.error("perform: non-URLError on \(req.httpMethod ?? "?", privacy: .public) \(req.url?.absoluteString ?? "?", privacy: .public): \(String(describing: error), privacy: .public)")
             throw SyncError(kind: .networkUnreachable, underlying: "\(error)")
         }
     }

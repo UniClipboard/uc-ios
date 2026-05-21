@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+import OSLog
+
+private let log = Logger(subsystem: "app.uniclipboard", category: "sync")
 
 /// Drives the auto-sync state machine. Cycle 9 product surface — replaces
 /// the manual "推送" / "应用到本机" buttons with a 1Hz foreground tick that
@@ -209,6 +212,7 @@ final class SyncEngine {
     /// Marked as an explicit refresh — UI shows a spinner until it
     /// completes. Used by the toolbar refresh button.
     func forceTickNow() {
+        log.info("forceTickNow: state=\(String(describing: self.state), privacy: .public) isTicking=\(self.isTicking, privacy: .public)")
         Task { @MainActor in await self.tick(explicit: true) }
     }
 
@@ -216,6 +220,7 @@ final class SyncEngine {
     /// pull-to-refresh control keeps its native spinner up until the
     /// tick actually finishes (rather than flashing for a frame).
     func explicitRefresh() async {
+        log.info("explicitRefresh: state=\(String(describing: self.state), privacy: .public) isTicking=\(self.isTicking, privacy: .public)")
         await tick(explicit: true)
     }
 
@@ -381,6 +386,7 @@ final class SyncEngine {
             return
         }
         if state == .authFailed || state == .loopDetected { return }
+        log.debug("tick: explicit=\(explicit, privacy: .public) state=\(String(describing: self.state), privacy: .public) url=\(server.url, privacy: .public) consecutiveFailures=\(self.consecutiveFailures, privacy: .public)")
         // Cross-process re-sync: the Share Extension writes
         // `lastSyncedContentHash` directly into the App Group when it
         // finishes a push (see CLAUDE.md "Share Extension write
@@ -427,19 +433,25 @@ final class SyncEngine {
             // device==nil pass-through, hash-equal pass-through) is a
             // healthy tick — drop the backoff counter so a recovered
             // network reverts to 1Hz cadence on the next sleep.
+            if consecutiveFailures > 0 {
+                log.info("tick: recovered after \(self.consecutiveFailures, privacy: .public) failures, state=\(String(describing: self.state), privacy: .public)")
+            }
             consecutiveFailures = 0
         } catch let e as SyncError where e.kind == .authFailed {
+            log.error("tick: auth failed, stopping loop")
             state = .authFailed
             lastError = e
             stop()
         } catch let e as SyncError {
+            consecutiveFailures += 1
+            log.error("tick: SyncError kind=\(String(describing: e.kind), privacy: .public) consecutiveFailures=\(self.consecutiveFailures, privacy: .public) underlying=\(e.underlying ?? "nil", privacy: .public)")
             state = .offlineRetrying
             lastError = e
-            consecutiveFailures += 1
         } catch {
+            consecutiveFailures += 1
+            log.error("tick: unexpected error consecutiveFailures=\(self.consecutiveFailures, privacy: .public): \(String(describing: error), privacy: .public)")
             state = .offlineRetrying
             lastError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
-            consecutiveFailures += 1
         }
     }
 
