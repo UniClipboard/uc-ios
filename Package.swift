@@ -15,6 +15,7 @@ let package = Package(
     products: [
         .library(name: "UniClipboardModels", targets: ["UniClipboardModels"]),
         .library(name: "UniClipboardNetwork", targets: ["UniClipboardNetwork"]),
+        .library(name: "UniClipboardCache", targets: ["UniClipboardCache"]),
     ],
     targets: [
         .target(
@@ -38,6 +39,16 @@ let package = Package(
             name: "UniClipboardNetworkTests",
             dependencies: ["UniClipboardNetwork", "UniClipboardModels"],
             path: "Tests/UniClipboardNetworkTests"
+        ),
+        .target(
+            name: "UniClipboardCache",
+            dependencies: ["UniClipboardModels"],
+            path: "Shared/Cache"
+        ),
+        .testTarget(
+            name: "UniClipboardCacheTests",
+            dependencies: ["UniClipboardCache", "UniClipboardModels"],
+            path: "Tests/UniClipboardCacheTests"
         ),
     ]
 )
