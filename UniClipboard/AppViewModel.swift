@@ -282,7 +282,9 @@ final class AppViewModel {
     /// the live clipboard — the spec only keeps one record, so this is a
     /// local-cache-only mutation today.
     func removeHistoryItem(id: UUID) {
+        let removed = history.filter { $0.id == id }
         history.removeAll { $0.id == id }
+        Self.scheduleCacheDelete(removed.compactMap { Self.profileIdIfAny($0.entry) })
     }
 
     /// Append a sync event to `history`. Inserted at index 0 so the
@@ -305,13 +307,7 @@ final class AppViewModel {
             ClipboardHistoryItem(entry: entry, timestamp: timestamp, direction: direction),
             at: 0
         )
-        if history.count > Self.maxHistoryCount {
-            // Trim in one shot rather than removeLast() per overflow — a
-            // single replacement is one didSet write and one JSON encode,
-            // which matters when SyncEngine catches up after a long
-            // background and floods the log.
-            history = Array(history.prefix(Self.maxHistoryCount))
-        }
+        trimHistoryAndPruneCache()
     }
 
     /// Merge one server-side `HistoryRecord` (§3.6) into the local
@@ -338,6 +334,7 @@ final class AppViewModel {
         let normalized = record.hash.uppercased()
         if record.isDeleted {
             history.removeAll { ($0.entry.hash?.uppercased()) == normalized }
+            Self.scheduleCacheDelete([HistoryRecord.profileId(type: record.type, hash: normalized)])
             return
         }
         if let idx = history.firstIndex(where: { ($0.entry.hash?.uppercased()) == normalized }) {
@@ -375,9 +372,7 @@ final class AppViewModel {
         // record, so it's a non-issue in practice.
         let insertIdx = history.firstIndex(where: { $0.timestamp < timestamp }) ?? history.count
         history.insert(item, at: insertIdx)
-        if history.count > Self.maxHistoryCount {
-            history = Array(history.prefix(Self.maxHistoryCount))
-        }
+        trimHistoryAndPruneCache()
     }
 
     /// Write the active server's clipboard to the device. Text: short
@@ -401,7 +396,7 @@ final class AppViewModel {
             defer { isApplying = false }
             do {
                 let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
-                let bytes = try await client.getFile(name: dataName)
+                let bytes = try await Self.fetchLiveLatest(client: client, entry: entry, dataName: dataName)
                 try Self.verify(bytes: bytes, against: entry)
                 let text = String(decoding: bytes, as: UTF8.self)
                 pasteboard.write(text: text)
@@ -421,7 +416,7 @@ final class AppViewModel {
             defer { isApplying = false }
             do {
                 let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
-                let bytes = try await client.getFile(name: dataName)
+                let bytes = try await Self.fetchLiveLatest(client: client, entry: entry, dataName: dataName)
                 try Self.verify(bytes: bytes, against: entry)
                 pasteboard.write(data: bytes, uti: Self.utiForDataName(dataName), originalName: dataName)
                 applyError = nil
@@ -465,7 +460,7 @@ final class AppViewModel {
         lastAppliedAttachmentName = nil
         do {
             let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
-            let bytes = try await client.getHistoryPayload(profileId: profileId)
+            let bytes = try await Self.fetchHistory(client: client, profileId: profileId)
             try Self.verify(bytes: bytes, against: entry)
             pasteboard.write(data: bytes, uti: Self.utiForDataName(dataName), originalName: dataName)
             lastAppliedAttachmentName = dataName
@@ -499,7 +494,7 @@ final class AppViewModel {
         let bytes: Data
         if let hash = entry.hash, !hash.isEmpty {
             let profileId = HistoryRecord.profileId(type: entry.type, hash: hash)
-            bytes = try await client.getHistoryPayload(profileId: profileId)
+            bytes = try await Self.fetchHistory(client: client, profileId: profileId)
         } else {
             bytes = try await client.getFile(name: dataName)
         }
@@ -539,7 +534,7 @@ final class AppViewModel {
         lastAppliedAttachmentName = nil
         do {
             let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
-            let bytes = try await client.getHistoryPayload(profileId: profileId)
+            let bytes = try await Self.fetchHistory(client: client, profileId: profileId)
             try Self.verify(bytes: bytes, against: entry)
             let url = try Self.targetURL(for: dataName, relative: appSettings.downloadRelativePath)
             try bytes.write(to: url, options: .atomic)
@@ -570,7 +565,7 @@ final class AppViewModel {
         lastAppliedAttachmentName = nil
         do {
             let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
-            let bytes = try await client.getFile(name: dataName)
+            let bytes = try await Self.fetchLiveLatest(client: client, entry: entry, dataName: dataName)
             try Self.verify(bytes: bytes, against: entry)
             let url = try Self.targetURL(for: dataName, relative: appSettings.downloadRelativePath)
             try bytes.write(to: url, options: .atomic)
@@ -580,6 +575,75 @@ final class AppViewModel {
             saveError = e
         } catch {
             saveError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
+        }
+    }
+
+    /// Trim `history` to `maxHistoryCount` and fire a best-effort cache
+    /// delete for every evicted entry's `profileId`. Used by both
+    /// `appendHistory` and `mergeHistoryRecord` after their respective
+    /// inserts. Done in one shot (single didSet → single JSON encode)
+    /// rather than per-overflow `removeLast`s — matters when SyncEngine
+    /// catches up from a long background and floods the log.
+    private func trimHistoryAndPruneCache() {
+        guard history.count > Self.maxHistoryCount else { return }
+        let evicted = history.dropFirst(Self.maxHistoryCount)
+        let profileIds = evicted.compactMap { Self.profileIdIfAny($0.entry) }
+        history = Array(history.prefix(Self.maxHistoryCount))
+        Self.scheduleCacheDelete(profileIds)
+    }
+
+    /// Derive the `PayloadCache` key for an entry, or nil if no stable
+    /// key exists (hash missing). Defensive `.uppercased()` so this
+    /// matches the write-side key even if some upstream skipped
+    /// `Clipboard`'s decode normalization.
+    private static func profileIdIfAny(_ entry: Clipboard) -> String? {
+        guard let hash = entry.hash, !hash.isEmpty else { return nil }
+        return HistoryRecord.profileId(type: entry.type, hash: hash.uppercased())
+    }
+
+    /// Fire-and-forget delete of a batch of cache files. Spawned from a
+    /// MainActor caller — the unstructured Task lets the history setter
+    /// return immediately so the persisting `didSet` JSON encode isn't
+    /// blocked by disk I/O. Errors are swallowed (cache delete is
+    /// best-effort by design — leftover bytes just age out under LRU).
+    private static func scheduleCacheDelete(_ profileIds: [String]) {
+        guard !profileIds.isEmpty else { return }
+        Task.detached {
+            for id in profileIds {
+                await PayloadCache.shared.delete(profileId: id)
+            }
+        }
+    }
+
+    /// Read-through cache for the §2.4 live-latest route
+    /// (`GET /file/<dataName>`). Goes through `PayloadCache.shared` when
+    /// `entry.hash` is present, bypasses for the rare hash-less legacy
+    /// path (no stable cache key exists to dedup against). Bytes are NOT
+    /// re-verified here — verification happens at the call site after
+    /// this returns, the same way the pre-cache code did.
+    private static func fetchLiveLatest(
+        client: SyncClipboardClient,
+        entry: Clipboard,
+        dataName: String
+    ) async throws -> Data {
+        if let hash = entry.hash, !hash.isEmpty {
+            let profileId = HistoryRecord.profileId(type: entry.type, hash: hash)
+            return try await PayloadCache.shared.fetchAndStore(profileId: profileId) {
+                try await client.getFile(name: dataName)
+            }
+        }
+        return try await client.getFile(name: dataName)
+    }
+
+    /// Read-through cache for the §2.11 history route
+    /// (`GET /file/history/<profileId>`). The `profileId` already
+    /// encodes the type + hash, so it doubles as the cache key.
+    private static func fetchHistory(
+        client: SyncClipboardClient,
+        profileId: String
+    ) async throws -> Data {
+        try await PayloadCache.shared.fetchAndStore(profileId: profileId) {
+            try await client.getHistoryPayload(profileId: profileId)
         }
     }
 
@@ -679,6 +743,10 @@ extension AppViewModel {
             let client = try SyncClipboardClient(server: server, trustInsecureCert: trustInsecure)
             if let payload = snapshot.payload, let dataName = entry.dataName {
                 try await client.putFile(name: dataName, body: payload)
+                if let hash = entry.hash, !hash.isEmpty {
+                    let profileId = HistoryRecord.profileId(type: entry.type, hash: hash)
+                    try? await PayloadCache.shared.write(profileId: profileId, bytes: payload)
+                }
             }
             try await client.putClipboard(entry)
             serverLatest = entry

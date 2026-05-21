@@ -24,6 +24,10 @@ struct ShareUploader {
 
         if entry.hasData, let payload, let name = entry.dataName {
             try await client.putFile(name: name, body: payload)
+            if let hash = entry.hash, !hash.isEmpty {
+                let profileId = HistoryRecord.profileId(type: entry.type, hash: hash)
+                try? await PayloadCache.shared.write(profileId: profileId, bytes: payload)
+            }
         }
         try await client.putClipboard(entry)
 
