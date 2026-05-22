@@ -190,6 +190,11 @@ private struct ServersListView: View {
                             if server.id != servers.activeConfigId {
                                 Button {
                                     servers.activeConfigId = server.id
+                                    // Reconfiguring the default is a fresh
+                                    // intent — drop any home-chip pin so
+                                    // the new default actually takes effect
+                                    // (otherwise the pin keeps winning).
+                                    servers.manualOverrideConfigId = nil
                                 } label: {
                                     Label("设为活动", systemImage: "checkmark.circle")
                                 }
@@ -288,12 +293,19 @@ private struct ServersListView: View {
 
     private func delete(server: ServerConfig) {
         let wasActive = (server.id == servers.activeConfigId)
+        let wasPinned = (server.id == servers.manualOverrideConfigId)
         servers.configs.removeAll { $0.id == server.id }
         if wasActive {
             // §5.2 — activeConfig already falls back to configs[0], but
             // pin the id so the persisted state is in sync with what the
             // UI shows.
             servers.activeConfigId = servers.configs.first?.id
+        }
+        if wasPinned {
+            // Don't leave a dangling override id around — `resolveActiveConfig`
+            // already guards on existence, but persisting a phantom id is
+            // sloppy and would re-engage if the same id ever re-appeared.
+            servers.manualOverrideConfigId = nil
         }
         // Drop any Sharing-Suggestions tiles the system is showing for
         // this server. Without this, iOS would keep suggesting a dead

@@ -188,6 +188,69 @@ final class FixturesTests: XCTestCase {
         XCTAssertEqual(cfg.displayLabel, "http://h")
     }
 
+    func test_resolveActive_defaultWinsWhenItAlsoMatchesSSID() {
+        // Both default A and non-default B configure "Home". Default wins.
+        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
+        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
+        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
+        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "a",
+                       "default must win when it also has a matching SSID rule")
+    }
+
+    func test_resolveActive_nonDefaultStillWinsWhenDefaultDoesNotMatch() {
+        // Default A has no rule; B has "Home". B wins (unchanged behavior).
+        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
+        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
+        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
+        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "b")
+    }
+
+    func test_manualOverride_winsOverSSIDAutoSwitch() {
+        // Server A is the default; Server B has an autoSwitchWifiNames rule
+        // matching the current SSID. With no override, §5.3 picks B. With
+        // a manual override pinning A, A wins.
+        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p", autoSwitchWifiNames: [])
+        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
+        var list = ServerConfigList(configs: [a, b], activeConfigId: "a")
+        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "b",
+                       "without override SSID rule should win")
+        list.manualOverrideConfigId = "a"
+        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "a",
+                       "manual pin must beat SSID rule")
+    }
+
+    func test_manualOverride_winsOverActiveConfigDefault() {
+        // No SSID context — the pin should still override the default.
+        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
+        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p")
+        let list = ServerConfigList(configs: [a, b], activeConfigId: "a", manualOverrideConfigId: "b")
+        XCTAssertEqual(list.resolveActiveConfig(currentSsid: nil)?.id, "b")
+    }
+
+    func test_manualOverride_ignoredWhenIdDoesNotResolve() {
+        // Phantom override id falls through to the normal default/SSID path.
+        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
+        let list = ServerConfigList(configs: [a], activeConfigId: "a", manualOverrideConfigId: "ghost")
+        XCTAssertEqual(list.resolveActiveConfig(currentSsid: nil)?.id, "a")
+    }
+
+    func test_manualOverride_roundTripsThroughJSON() throws {
+        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
+        let original = ServerConfigList(configs: [a], activeConfigId: "a", manualOverrideConfigId: "a")
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(ServerConfigList.self, from: data)
+        XCTAssertEqual(decoded.manualOverrideConfigId, "a")
+    }
+
+    func test_manualOverride_absentInOldJSONDecodesAsNil() throws {
+        // Existing installs persisted before this field was introduced
+        // must continue to decode (nil override is the legacy behavior).
+        let json = #"{"configs":[],"activeConfigId":null}"#
+        let data = Data(json.utf8)
+        let decoded = try JSONDecoder().decode(ServerConfigList.self, from: data)
+        XCTAssertNil(decoded.manualOverrideConfigId)
+    }
+
     func test_serverConfig_normalizeSSID_stripsQuotesAndRejectsPlaceholders() {
         XCTAssertEqual(ServerConfig.normalizeSSID("\"Home-5G\""), "Home-5G")
         XCTAssertEqual(ServerConfig.normalizeSSID("  Home-5G  "), "Home-5G")

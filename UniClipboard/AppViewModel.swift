@@ -196,10 +196,34 @@ final class AppViewModel {
     /// Whether the effective server differs from the user-chosen default —
     /// i.e., the current SSID forced an auto-switch override. Views use
     /// this to surface a badge so the difference doesn't feel like a bug.
+    /// Manual chip pins don't count: they're the user's own choice, not
+    /// something to apologize for.
     var isAutoSwitchOverridden: Bool {
+        if servers.manualOverrideConfigId != nil { return false }
         guard let effective = effectiveActiveConfig,
               let default_ = servers.activeConfig else { return false }
         return effective.id != default_.id
+    }
+
+    /// True when `manualOverrideConfigId` is set AND it resolves to a
+    /// real config. Views use this to show "已固定" affordance + the
+    /// "跟随 WiFi 自动切换" release action.
+    var hasManualOverride: Bool {
+        guard let id = servers.manualOverrideConfigId else { return false }
+        return servers.configs.contains(where: { $0.id == id })
+    }
+
+    /// Set the manual override to `id` (or clear it if `nil`). Called by
+    /// the home-screen chip switcher. Going through the view-model keeps
+    /// the persistence + engine-restart side effects centralized — the
+    /// existing `servers.didSet` already fires `engine?.handleServersChange`
+    /// which compares effective IDs and resets per-server runtime state
+    /// (last-synced hash, history watermark) when the effective server
+    /// flips. We don't need a separate path.
+    func setManualServerOverride(_ id: String?) {
+        var list = servers
+        list.manualOverrideConfigId = id
+        servers = list
     }
 
     /// Hook fired by `CurrentSSIDProvider.onSSIDChanged`. Resets engine
@@ -279,6 +303,12 @@ final class AppViewModel {
         )
         list.configs.append(config)
         list.activeConfigId = config.id
+        // The user just expressed intent to use this new server — pin it
+        // via manual override so a pre-existing autoSwitchWifiNames rule
+        // on another server doesn't immediately swap it back out under
+        // the new owner. They can release via the switcher's "跟随 WiFi"
+        // row when they realize they want roaming back.
+        list.manualOverrideConfigId = config.id
         servers = list
         pendingImport = nil
     }

@@ -62,8 +62,10 @@ struct HomeView: View {
                         activeServer: vm.effectiveActiveConfig,
                         defaultServerId: vm.servers.activeConfigId,
                         isAutoSwitched: vm.isAutoSwitchOverridden,
+                        isManuallyPinned: vm.hasManualOverride,
                         allServers: vm.servers.configs,
-                        onSelect: { id in vm.servers.activeConfigId = id }
+                        onSelect: { id in vm.setManualServerOverride(id) },
+                        onClearPin: { vm.setManualServerOverride(nil) }
                     )
                 }
                 if let issue = currentIssue {
@@ -721,8 +723,13 @@ private struct ServerChip: View {
     /// True iff `activeServer.id != defaultServerId`. Drives the small
     /// wifi sub-icon on the chip.
     let isAutoSwitched: Bool
+    /// True when the user has explicitly pinned a server via the chip.
+    /// Mutually exclusive with `isAutoSwitched` (the resolver returns the
+    /// pin before consulting SSID rules).
+    let isManuallyPinned: Bool
     let allServers: [ServerConfig]
     let onSelect: (String) -> Void
+    let onClearPin: () -> Void
 
     @State private var showingSwitcher: Bool =
         ProcessInfo.processInfo.environment["UC_OPEN_SWITCHER"] == "1"
@@ -732,7 +739,12 @@ private struct ServerChip: View {
         // SwiftUI's navigation bar squeezes the leading toolbar item to
         // ~30pt and truncates the alias Text to zero width.
         HStack(spacing: 6) {
-            if isAutoSwitched {
+            if isManuallyPinned {
+                Image(systemName: "pin.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+            } else if isAutoSwitched {
                 Image(systemName: "wifi")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tint)
@@ -764,9 +776,14 @@ private struct ServerChip: View {
             ServerSwitcherSheet(
                 activeId: activeServer?.id,
                 defaultId: defaultServerId,
+                isManuallyPinned: isManuallyPinned,
                 servers: allServers,
                 onSelect: { id in
                     onSelect(id)
+                    showingSwitcher = false
+                },
+                onClearPin: {
+                    onClearPin()
                     showingSwitcher = false
                 }
             )
@@ -779,28 +796,58 @@ private struct ServerChip: View {
 private struct ServerSwitcherSheet: View {
     let activeId: String?
     let defaultId: String?
+    /// When true, render the "跟随 WiFi 自动切换" release row so the user
+    /// can drop the manual pin without having to re-tap the previously
+    /// active server (which they may not even remember was the default).
+    let isManuallyPinned: Bool
     let servers: [ServerConfig]
     let onSelect: (String) -> Void
+    let onClearPin: () -> Void
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(servers) { server in
-                    Button {
-                        onSelect(server.id)
-                    } label: {
-                        ServerSwitcherRow(
-                            server: server,
-                            isActive: server.id == activeId,
-                            isDefault: server.id == defaultId
+                if isManuallyPinned {
+                    Section {
+                        Button(action: onClearPin) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "wifi")
+                                    .font(.title3)
+                                    .foregroundStyle(.tint)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("跟随 WiFi 自动切换")
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text("解除当前固定,按规则自动选择服务器")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Section {
+                    ForEach(servers) { server in
+                        Button {
+                            onSelect(server.id)
+                        } label: {
+                            ServerSwitcherRow(
+                                server: server,
+                                isActive: server.id == activeId,
+                                isDefault: server.id == defaultId
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(
+                            server.id == activeId
+                                ? Color.green.opacity(0.08)
+                                : Color.clear
                         )
                     }
-                    .buttonStyle(.plain)
-                    .listRowBackground(
-                        server.id == activeId
-                            ? Color.green.opacity(0.08)
-                            : Color.clear
-                    )
                 }
             }
             .listStyle(.insetGrouped)

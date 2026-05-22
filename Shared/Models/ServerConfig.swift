@@ -79,25 +79,49 @@ public struct ServerConfigList: Codable, Equatable, Hashable, Sendable {
     public var configs: [ServerConfig]
     public var activeConfigId: String?
 
-    public init(configs: [ServerConfig] = [], activeConfigId: String? = nil) {
+    /// User's explicit pin from the home-screen server chip. When non-nil
+    /// and resolvable to an existing config, this wins over both the
+    /// user's `activeConfigId` default AND the §5.3 SSID auto-switch
+    /// rules. Cleared when the user picks the "自动切换" affordance in
+    /// the switcher sheet, when the pinned server is deleted, or when
+    /// the user edits the default in Settings (treated as a fresh
+    /// intent that should release the pin).
+    ///
+    /// Why a separate field instead of just respecting `activeConfigId`:
+    /// the WiFi auto-switch feature is the whole reason for §5.3 — users
+    /// who set `autoSwitchWifiNames` *want* their non-default server to
+    /// take over on its LAN. So `activeConfigId` continues to mean "my
+    /// fallback when no SSID rule matches", and `manualOverrideConfigId`
+    /// is the "no, actually, I picked this one — stop second-guessing me"
+    /// override.
+    public var manualOverrideConfigId: String?
+
+    public init(
+        configs: [ServerConfig] = [],
+        activeConfigId: String? = nil,
+        manualOverrideConfigId: String? = nil
+    ) {
         self.configs = configs
         self.activeConfigId = activeConfigId
+        self.manualOverrideConfigId = manualOverrideConfigId
     }
 
     private enum CodingKeys: String, CodingKey {
-        case configs, activeConfigId
+        case configs, activeConfigId, manualOverrideConfigId
     }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         configs = try c.decodeIfPresent([ServerConfig].self, forKey: .configs) ?? []
         activeConfigId = try c.decodeIfPresent(String.self, forKey: .activeConfigId)
+        manualOverrideConfigId = try c.decodeIfPresent(String.self, forKey: .manualOverrideConfigId)
     }
 
     public func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(configs, forKey: .configs)
         try c.encodeIfPresent(activeConfigId, forKey: .activeConfigId)
+        try c.encodeIfPresent(manualOverrideConfigId, forKey: .manualOverrideConfigId)
     }
 
     /// §5.2 — stale activeConfigId falls back to configs[0]; nil iff configs is empty.
@@ -107,10 +131,25 @@ public struct ServerConfigList: Codable, Equatable, Hashable, Sendable {
         return configs.first
     }
 
-    /// §5.3 — auto-switch resolver.
+    /// Resolves the effective server. Precedence:
+    /// 1. `manualOverrideConfigId` — the user's explicit chip pin.
+    /// 2. The default server when it ITSELF has a matching SSID rule
+    ///    (covers the case where multiple servers share a SSID — the
+    ///    default wins to avoid silently re-routing the user's chosen
+    ///    server to one they merely added on the same network).
+    /// 3. §5.3 SSID auto-switch — first non-default config matching the
+    ///    current Wi-Fi, in `configs` array order. Two non-default
+    ///    servers sharing a SSID is a configuration accident; the
+    ///    deterministic-but-implicit "first wins" stays for now.
+    /// 4. `activeConfig` — the user's persisted default (with §5.2 fallback).
     public func resolveActiveConfig(currentSsid: String?) -> ServerConfig? {
+        if let id = manualOverrideConfigId,
+           let pinned = configs.first(where: { $0.id == id }) {
+            return pinned
+        }
         guard let defaultCfg = activeConfig else { return nil }
         guard Self.normalizeNonNilSSID(currentSsid) != nil else { return defaultCfg }
+        if defaultCfg.matchesWifiName(currentSsid) { return defaultCfg }
         for cfg in configs where cfg.id != defaultCfg.id {
             if cfg.matchesWifiName(currentSsid) { return cfg }
         }
