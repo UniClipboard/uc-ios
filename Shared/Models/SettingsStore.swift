@@ -171,6 +171,32 @@ public final class SettingsStore: @unchecked Sendable {
         }
     }
 
+    /// Load the "we last ran the §2.7 throttle window at" timestamp.
+    /// `nil` means "we've never run it (or just switched servers)" —
+    /// the engine treats nil as immediately-due. Unlike the watermark,
+    /// this is purely a rate-limit hint; out-of-date values just cause
+    /// one extra (incremental) pull, not data loss.
+    public func loadLastHistorySyncAt() -> Date? {
+        guard let s = defaults.string(forKey: AppSettings.PersistenceKey.lastHistorySyncAt),
+              !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        if let d = Self.fractionalISOFormatter.date(from: s) { return d }
+        if let d = Self.plainISOFormatter.date(from: s) { return d }
+        return nil
+    }
+
+    /// Persist the §2.7 throttle timestamp. Pass `nil` to clear (server
+    /// switch — the new server's history should be pulled immediately
+    /// even if the old server's throttle window hasn't elapsed).
+    public func saveLastHistorySyncAt(_ date: Date?) {
+        if let date {
+            defaults.set(Self.fractionalISOFormatter.string(from: date),
+                         forKey: AppSettings.PersistenceKey.lastHistorySyncAt)
+        } else {
+            defaults.removeObject(forKey: AppSettings.PersistenceKey.lastHistorySyncAt)
+        }
+    }
+
     // MARK: - ISO formatters (shared between watermark + future date keys)
 
     private static let fractionalISOFormatter: ISO8601DateFormatter = {

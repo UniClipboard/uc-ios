@@ -122,5 +122,13 @@ public extension AppSettings {
         /// ISO-8601 string so the wire format and the persisted form
         /// match (debugging via `defaults read` is then trivial).
         public static let historyModifiedAfter = "history_modified_after"
+        /// When the engine last finished a §2.7 history pull (success
+        /// OR failure — `runHistorySyncIfDue` writes through `defer` so
+        /// a 500-ing server doesn't get hammered). Persisting it stops
+        /// the in-memory throttle from being bypassed every cold launch,
+        /// which otherwise triggered a full pagination on every app
+        /// open. ISO-8601 string for `defaults read` debuggability,
+        /// matching `historyModifiedAfter`.
+        public static let lastHistorySyncAt = "last_history_sync_at"
     }
 }

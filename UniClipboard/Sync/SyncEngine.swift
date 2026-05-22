@@ -170,14 +170,29 @@ final class SyncEngine {
     var historySyncMaxPages: Int = 50
 
     /// When the last successful (or attempted) `runHistorySyncIfDue` ran.
-    /// nil triggers an immediate first sync on the next tick.
+    /// nil triggers an immediate first sync on the next tick. Persisted
+    /// to `SettingsStore` so an app cold-launch within the throttle
+    /// window doesn't re-fire a full pagination — the previous behavior
+    /// (in-memory only) re-ran the full §2.7 walk on every foreground,
+    /// which is what landed dozens of POSTs in the server log per app
+    /// open.
     @ObservationIgnored
     private var lastHistorySyncAt: Date?
+
+    /// Mutex for the history-sync coroutine. The live-clipboard tick used
+    /// to `await` the history pagination inline, which blocked the 1Hz
+    /// loop for as long as the server's history took to paginate
+    /// (observed: ~5s for a 20-page cold start). We now spawn it as a
+    /// detached task, but two consecutive ticks could otherwise overlap;
+    /// this flag drops the second entrant. Cleared in `defer`.
+    @ObservationIgnored
+    private var isHistorySyncing: Bool = false
 
     init(viewModel: AppViewModel, store: SettingsStore) {
         self.viewModel = viewModel
         self.store = store
         self.lastSyncedContentHash = store.loadLastSyncedHash()
+        self.lastHistorySyncAt = store.loadLastHistorySyncAt()
     }
 
     /// Begin the polling loop. Idempotent — calling while already running
@@ -266,8 +281,13 @@ final class SyncEngine {
         // Force the next tick to hit /api/history/query immediately —
         // the new server's `lastModified` watermark is unrelated to the
         // old one's, so we have to refetch from scratch (the caller
-        // clears `vm.historyWatermark` separately).
+        // clears `vm.historyWatermark` separately). Clear on disk too:
+        // if the app crashes/backgrounds between server switch and the
+        // first post-switch tick, init would otherwise reload the old
+        // server's timestamp and silently throttle the new server's
+        // first pull.
         lastHistorySyncAt = nil
+        store.saveLastHistorySyncAt(nil)
     }
 
     /// Called by `AppViewModel.servers.didSet`. Decides whether to clear
@@ -427,8 +447,15 @@ final class SyncEngine {
             // `historySyncInterval`. Internal failures don't escalate to
             // engine state — history is a strict superset of the live
             // clipboard, and the live tick above is the user-visible
-            // sync signal.
-            await runHistorySyncIfDue(client: client, vm: vm)
+            // sync signal. Spawned as a detached task so the 1Hz live
+            // loop keeps running while history paginates: prior shape
+            // `await runHistorySyncIfDue(...)` froze live polling for
+            // the entire duration of the §2.7 walk (5+ seconds on cold
+            // start with 20-page histories).
+            let engine = self
+            Task { @MainActor in
+                await engine.runHistorySyncIfDue(client: client, vm: vm)
+            }
             // Any path that reached here (apply-success, push-success,
             // device==nil pass-through, hash-equal pass-through) is a
             // healthy tick — drop the backoff counter so a recovered
@@ -623,17 +650,43 @@ final class SyncEngine {
     /// Pull the §2.7 history pages incrementally and merge into
     /// `vm.history`. Best-effort: any failure is swallowed and the next
     /// due window will retry. Throttled by `historySyncInterval`.
+    ///
+    /// Re-entrancy: spawned from `tick()` as a detached Task, so two
+    /// adjacent ticks could overlap if a paginated walk takes longer
+    /// than `normalCadenceSeconds`. `isHistorySyncing` drops the
+    /// second entrant — we'd otherwise issue interleaved page-1/page-2
+    /// requests across two concurrent walks for the same server.
+    ///
+    /// Cold-start strategy: when no watermark exists yet (first-ever
+    /// install, freshly-switched server) we deliberately fetch ONLY the
+    /// first page and seed the watermark from it. The next due tick
+    /// then pulls strictly-newer records via `modifiedAfter`, so we
+    /// never re-paginate the full server-side history. The user loses
+    /// nothing in the live clipboard path (which is the headline
+    /// product surface), and the §2.7 history list back-fills
+    /// page-by-page as new records arrive. Without this branch, a
+    /// server with N pages of accumulated history hammered the API
+    /// with N POSTs on every fresh install / server switch.
     private func runHistorySyncIfDue(client: SyncClipboardClient, vm: AppViewModel) async {
         if let last = lastHistorySyncAt,
            Date().timeIntervalSince(last) < historySyncInterval {
             return
         }
+        guard !isHistorySyncing else { return }
+        isHistorySyncing = true
         // Always advance the throttle, even on failure — otherwise a
         // server that 500s on /api/history/query would have every 1Hz
-        // tick spam-retry the endpoint.
-        defer { lastHistorySyncAt = .now }
+        // tick spam-retry the endpoint. Persist via SettingsStore so a
+        // cold launch within the throttle window doesn't restart the
+        // walk from scratch.
+        defer {
+            isHistorySyncing = false
+            lastHistorySyncAt = .now
+            store.saveLastHistorySyncAt(lastHistorySyncAt)
+        }
 
         let watermark = vm.historyWatermark
+        let isColdStart = (watermark == nil)
         var maxModified: Date = watermark ?? .distantPast
         var page = 1
         while page <= historySyncMaxPages {
@@ -647,12 +700,30 @@ final class SyncEngine {
                 // `lastError` remain tied to the live-clipboard path.
                 return
             }
-            if records.isEmpty { break }
+            if records.isEmpty {
+                // Cold-start + empty server: seed the watermark to
+                // `.now` so the next due window doesn't re-enter the
+                // cold-start branch and probe page 1 again every 30s
+                // forever. A subsequent server-side write will surface
+                // through the normal `modifiedAfter` delta path.
+                if isColdStart {
+                    vm.historyWatermark = .now
+                }
+                break
+            }
             for record in records {
                 vm.mergeHistoryRecord(record)
                 if let lm = record.lastModified, lm > maxModified {
                     maxModified = lm
                 }
+            }
+            if isColdStart {
+                // Seed the watermark from page 1 and let future ticks
+                // back-fill via `modifiedAfter`. Without this break, an
+                // accumulated history (typical for any server that's
+                // been running for a while) would issue N back-to-back
+                // POSTs on every fresh install / server switch.
+                break
             }
             page += 1
         }
