@@ -288,6 +288,12 @@ final class AppViewModel {
     /// re-read automatically.
     func readPasteboard() { pasteboard.read() }
 
+    /// Cheap changeCount-gated poll. Called by `SyncEngine` once per tick
+    /// so cross-app copies (which `UIPasteboard.changedNotification` does
+    /// not reliably deliver, and which the "Allow Paste" modal can swallow
+    /// on first foreground read) propagate within one cadence.
+    func pollPasteboardIfChanged() { pasteboard.pollIfChanged() }
+
     /// Permit pasteboard reads. Call once the main tabs are on screen so
     /// the iOS 16+ "Allow Paste" prompt fires after the user has visual
     /// context, not during cold launch / Setup. Idempotent.

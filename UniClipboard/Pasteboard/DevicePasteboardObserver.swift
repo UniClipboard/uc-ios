@@ -58,6 +58,20 @@ final class DevicePasteboardObserver {
     @ObservationIgnored
     private var lastWriteChangeCount: Int = -1
 
+    /// `UIPasteboard.changeCount` recorded after the last successful read,
+    /// regardless of who wrote (us or another app). `pollIfChanged()` uses
+    /// this to skip the content-access call (which paints iOS's "pasted
+    /// from X" banner) when nothing has actually changed since we last
+    /// looked. `-1` sentinel so the very first poll always reads.
+    ///
+    /// Reason this exists: `UIPasteboard.changedNotification` is unreliable
+    /// for cross-app changes — and when iOS shows the "Allow Paste" modal
+    /// the read that triggered it returns nil, so `current` is stuck nil
+    /// until something re-reads. SyncEngine drives that re-read once per
+    /// tick via `pollIfChanged`, which is cheap when nothing changed.
+    @ObservationIgnored
+    private var lastObservedChangeCount: Int = -1
+
     /// Content hash of the most recent value we wrote to `UIPasteboard`,
     /// uppercase. Secondary echo guard: when changeCount drifts past
     /// `lastWriteChangeCount` (an unrelated process bumped the pasteboard,
@@ -103,6 +117,29 @@ final class DevicePasteboardObserver {
     /// calls just re-read (cheap and useful when re-entering foreground).
     func activate() {
         isActive = true
+        read()
+    }
+
+    /// Cheap poll: read `UIPasteboard.general.changeCount` (free, no
+    /// privacy banner) and only call `read()` when it has advanced past
+    /// both our own last write and our last observed value. Called from
+    /// `SyncEngine.tick()` at 1Hz so cross-app pasteboard changes — which
+    /// `UIPasteboard.changedNotification` does not reliably deliver, and
+    /// which `didBecomeActive` only covers on the foreground transition —
+    /// get picked up within one tick. Also recovers the case where the
+    /// iOS "Allow Paste" modal swallowed the first read after foreground
+    /// (the triggering call returned nil; tapping Allow doesn't re-deliver
+    /// the bytes — but the next tick will see the same changeCount, read
+    /// once more silently, and surface the content).
+    ///
+    /// Env-driven modes are deterministic and have no changeCount, so this
+    /// is a no-op for them — their `current` is set in init and at
+    /// `activate()`.
+    func pollIfChanged() {
+        guard isActive, case .live = envMode else { return }
+        let cc = UIPasteboard.general.changeCount
+        if cc == lastWriteChangeCount { return }
+        if cc == lastObservedChangeCount { return }
         read()
     }
 
@@ -195,8 +232,16 @@ final class DevicePasteboardObserver {
             return
         }
         guard let snap = snapshot()?.clipboard else {
+            // Likely the iOS "Allow Paste" modal swallowed this read — the
+            // bytes are not actually nil on the device, we just don't have
+            // permission yet. Deliberately do NOT advance
+            // `lastObservedChangeCount` here so the next `pollIfChanged`
+            // re-reads at the same changeCount once permission lands.
             current = nil
             return
+        }
+        if case .live = envMode {
+            lastObservedChangeCount = UIPasteboard.general.changeCount
         }
         if let written = lastWrittenContentHash,
            let snapHash = snap.hash?.uppercased(),

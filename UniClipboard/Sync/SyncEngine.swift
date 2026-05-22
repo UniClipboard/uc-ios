@@ -406,6 +406,14 @@ final class SyncEngine {
             return
         }
         if state == .authFailed || state == .loopDetected { return }
+        // Pasteboard refresh: `UIPasteboard.changedNotification` does not
+        // reliably fire for cross-app changes, and the iOS 16+ "Allow
+        // Paste" modal swallows the very first read after foreground
+        // (tapping Allow grants permission for future reads but does not
+        // re-deliver the bytes to the call that triggered the modal).
+        // Poll once per tick; `pollIfChanged` is changeCount-gated so the
+        // content-access call only happens when something actually moved.
+        vm.pollPasteboardIfChanged()
         log.debug("tick: explicit=\(explicit, privacy: .public) state=\(String(describing: self.state), privacy: .public) url=\(server.url, privacy: .public) consecutiveFailures=\(self.consecutiveFailures, privacy: .public)")
         // Cross-process re-sync: the Share Extension writes
         // `lastSyncedContentHash` directly into the App Group when it
