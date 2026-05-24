@@ -29,11 +29,19 @@ struct ShareUploader {
                 try? await PayloadCache.shared.write(profileId: profileId, bytes: payload)
             }
         }
-        try await client.putClipboard(entry)
-
+        // Persist BEFORE the metadata PUT, not after. `putClipboard` is the
+        // moment the new hash becomes visible to every other client (the
+        // main app's `SyncEngine.tick()` GETs `/SyncClipboard.json` 1Hz);
+        // if we wrote the hash after the PUT, a concurrent tick would see
+        // `server.hash != lastSyncedContentHash` and pull the entry we
+        // just pushed back to the device (the "one bounce" loop). The file
+        // backend further removes cfprefsd's cross-process cache lag, so
+        // by the time `putClipboard` returns, any other process reading
+        // `loadLastSyncedHash` sees the new value.
         if let hash = entry.hash, !hash.isEmpty {
             store.saveLastSyncedHash(hash)
         }
+        try await client.putClipboard(entry)
 
         // Tell iOS Sharing Suggestions "the user just sent this to this
         // server" so next time the share sheet ranks the server's

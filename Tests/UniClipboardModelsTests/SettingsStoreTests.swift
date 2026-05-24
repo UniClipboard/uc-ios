@@ -7,23 +7,30 @@ final class SettingsStoreTests: XCTestCase {
 
     private var suiteName: String!
     private var defaults: UserDefaults!
+    private var containerURL: URL!
 
     override func setUp() {
         super.setUp()
         suiteName = "SettingsStoreTests-\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
         XCTAssertNotNil(defaults, "Failed to create test UserDefaults suite")
+        containerURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SettingsStoreTests-\(UUID().uuidString)", isDirectory: true)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         suiteName = nil
+        if let url = containerURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        containerURL = nil
         super.tearDown()
     }
 
     private func makeStore() -> SettingsStore {
-        SettingsStore(defaults: defaults)
+        SettingsStore(defaults: defaults, containerURL: containerURL)
     }
 
     private func seed(_ value: Any, forKey key: String) {
@@ -287,6 +294,67 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(loaded.prefetchAttachments, false)
         XCTAssertEqual(loaded.prefetchOnCellular, true)
         XCTAssertEqual(loaded.payloadCacheMaxBytes, 500 * 1024 * 1024)
+    }
+
+    // MARK: - lastSyncedHash file backend
+
+    func test_loadLastSyncedHash_whenEmpty_returnsNil() {
+        let store = makeStore()
+        XCTAssertNil(store.loadLastSyncedHash())
+    }
+
+    func test_lastSyncedHash_saveThenLoad_roundTrips() {
+        let store = makeStore()
+        let hash = String(repeating: "A", count: 64)
+        store.saveLastSyncedHash(hash)
+        XCTAssertEqual(store.loadLastSyncedHash(), hash)
+    }
+
+    func test_lastSyncedHash_isNormalizedToUppercase() {
+        let store = makeStore()
+        store.saveLastSyncedHash(String(repeating: "ab", count: 32))
+        XCTAssertEqual(store.loadLastSyncedHash(), String(repeating: "AB", count: 32))
+    }
+
+    func test_lastSyncedHash_nilClearsTheFile() {
+        let store = makeStore()
+        store.saveLastSyncedHash("DEADBEEF")
+        XCTAssertNotNil(store.loadLastSyncedHash())
+        store.saveLastSyncedHash(nil)
+        XCTAssertNil(store.loadLastSyncedHash())
+    }
+
+    func test_lastSyncedHash_writesAreVisibleToASecondStoreInstance() {
+        // Same containerURL, second `SettingsStore` — models the
+        // Share-Extension-writes / main-app-reads handshake. The file
+        // backend exists specifically because the equivalent via
+        // `UserDefaults` lagged cross-process.
+        let writer = makeStore()
+        writer.saveLastSyncedHash("CAFEBABE")
+        let reader = SettingsStore(defaults: defaults, containerURL: containerURL)
+        XCTAssertEqual(reader.loadLastSyncedHash(), "CAFEBABE")
+    }
+
+    func test_lastSyncedHash_migratesFromUserDefaultsOnInit() {
+        // Pre-fill the legacy UserDefaults key BEFORE the store is built.
+        seed("LEGACYHASH", forKey: AppSettings.PersistenceKey.lastSyncedContentHash)
+        let store = makeStore()
+        XCTAssertEqual(store.loadLastSyncedHash(), "LEGACYHASH")
+        XCTAssertNil(
+            defaults.string(forKey: AppSettings.PersistenceKey.lastSyncedContentHash),
+            "Legacy UserDefaults key must be cleared after migration"
+        )
+    }
+
+    func test_lastSyncedHash_fileExistsWinsOverLegacyUserDefaults() {
+        // If the file backend already has a value, the migration MUST NOT
+        // overwrite it with the legacy UserDefaults value (otherwise a
+        // re-launch could reintroduce stale state).
+        let store = makeStore()
+        store.saveLastSyncedHash("FILEWINS")
+        seed("STALELEGACY", forKey: AppSettings.PersistenceKey.lastSyncedContentHash)
+        let reloaded = SettingsStore(defaults: defaults, containerURL: containerURL)
+        XCTAssertEqual(reloaded.loadLastSyncedHash(), "FILEWINS")
     }
 
     func test_loadAppSettings_unknownKeysAreTolerated() throws {

@@ -16,28 +16,75 @@ public final class SettingsStore: @unchecked Sendable {
     /// on both targets.
     public static let appGroupID = "group.app.uniclipboard.UniClipboard"
 
+    /// Filename of the file-backed `last_synced_content_hash` under
+    /// `containerURL`. Plain text, UTF-8, contains a single uppercase
+    /// 64-char hex SHA-256 (or is absent for `nil`). The file lives outside
+    /// `UserDefaults` because `cfprefsd` caches the App Group suite
+    /// per-process and lags cross-process writes — the Share Extension's
+    /// `saveLastSyncedHash` would otherwise not be visible to the main
+    /// app's `SyncEngine` for an indeterminate window after the
+    /// extension's PUT, letting the engine pull the just-pushed entry back
+    /// to the device (the §5.4 cross-process ping-pong this key exists
+    /// to prevent). `Data.write(to:options:.atomic)` is `tmp + rename`,
+    /// so concurrent readers see either the old value or the new one,
+    /// never a half-written file.
+    static let lastSyncedHashFilename = "last_synced_hash"
+
     private let defaults: UserDefaults
+    private let containerURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    /// - Parameter defaults: when nil (the default), the store opens the
-    ///   App Group suite (`appGroupID`) and one-shot-migrates any existing
-    ///   keys from `.standard` on first use. Falls back to `.standard` if
-    ///   the App Group entitlement isn't active. Tests pass an explicit
-    ///   ephemeral `UserDefaults(suiteName:)`.
-    public init(defaults: UserDefaults? = nil) {
-        let chosen: UserDefaults
+    /// - Parameters:
+    ///   - defaults: when nil (the default), the store opens the App Group
+    ///     suite (`appGroupID`) and one-shot-migrates any existing keys
+    ///     from `.standard` on first use. Falls back to `.standard` if the
+    ///     App Group entitlement isn't active. Tests pass an explicit
+    ///     ephemeral `UserDefaults(suiteName:)`.
+    ///   - containerURL: directory holding file-backed state (currently
+    ///     just `last_synced_hash`). When nil, resolves to the App Group
+    ///     container URL. Tests inject a unique tmp dir so file state is
+    ///     isolated per case.
+    public init(defaults: UserDefaults? = nil, containerURL: URL? = nil) {
+        let chosenDefaults: UserDefaults
         if let defaults {
-            chosen = defaults
+            chosenDefaults = defaults
         } else if let suite = UserDefaults(suiteName: SettingsStore.appGroupID) {
             SettingsStore.migrateFromStandardIfNeeded(into: suite)
-            chosen = suite
+            chosenDefaults = suite
         } else {
-            chosen = .standard
+            chosenDefaults = .standard
         }
-        self.defaults = chosen
+        self.defaults = chosenDefaults
+
+        let chosenContainer: URL
+        if let containerURL {
+            chosenContainer = containerURL
+        } else if let groupURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: SettingsStore.appGroupID
+        ) {
+            chosenContainer = groupURL
+        } else {
+            // No App Group entitlement (SwiftPM test harness, ad-hoc CLI).
+            // A unique tmp dir keeps file state isolated and disposable —
+            // any consumer that lacks the entitlement is by definition not
+            // sharing state with another process, so process-uniqueness
+            // matches what they get from `.standard` UserDefaults above.
+            chosenContainer = FileManager.default.temporaryDirectory
+                .appendingPathComponent("UniClipboardStore-\(UUID().uuidString)", isDirectory: true)
+        }
+        try? FileManager.default.createDirectory(
+            at: chosenContainer,
+            withIntermediateDirectories: true
+        )
+        self.containerURL = chosenContainer
         self.encoder = JSONEncoder()
         self.decoder = JSONDecoder()
+
+        // One-shot UserDefaults → file migration for `last_synced_hash`.
+        // Idempotent: only fires when the file is absent AND the legacy key
+        // is present, so a re-launch after the migration is a no-op.
+        migrateLastSyncedHashToFileIfNeeded()
     }
 
     /// One-shot migration from `.standard` to the App Group suite. Runs
@@ -61,6 +108,37 @@ public final class SettingsStore: @unchecked Sendable {
             guard let value = standard.object(forKey: key) else { continue }
             suite.set(value, forKey: key)
             standard.removeObject(forKey: key)
+        }
+    }
+
+    /// One-shot lift of `last_synced_content_hash` from `UserDefaults` to
+    /// the file backend. Runs at every `init` but is idempotent: the file's
+    /// presence alone short-circuits the copy, and the legacy key is
+    /// cleared only after the file write succeeds so a crash mid-migration
+    /// retries on next launch instead of losing the hash.
+    private func migrateLastSyncedHashToFileIfNeeded() {
+        let url = lastSyncedHashFileURL
+        if (try? url.checkResourceIsReachable()) == true { return }
+        guard let legacy = defaults.string(forKey: AppSettings.PersistenceKey.lastSyncedContentHash) else {
+            return
+        }
+        let normalized = legacy.uppercased()
+        guard writeLastSyncedHashFile(normalized) else { return }
+        defaults.removeObject(forKey: AppSettings.PersistenceKey.lastSyncedContentHash)
+    }
+
+    private var lastSyncedHashFileURL: URL {
+        containerURL.appendingPathComponent(SettingsStore.lastSyncedHashFilename, isDirectory: false)
+    }
+
+    @discardableResult
+    private func writeLastSyncedHashFile(_ hash: String) -> Bool {
+        let data = Data(hash.utf8)
+        do {
+            try data.write(to: lastSyncedHashFileURL, options: [.atomic])
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -110,17 +188,31 @@ public final class SettingsStore: @unchecked Sendable {
 
     /// Load the most-recent content hash the sync engine confirmed both
     /// sides shared. `nil` on first launch or after the engine resets.
+    ///
+    /// Backed by a plain-text file under the App Group container, not
+    /// `UserDefaults`. See `lastSyncedHashFilename` for why.
     public func loadLastSyncedHash() -> String? {
-        defaults.string(forKey: AppSettings.PersistenceKey.lastSyncedContentHash)
+        guard let data = try? Data(contentsOf: lastSyncedHashFileURL),
+              let raw = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed.uppercased()
     }
 
     /// Persist the latest synced-content hash. Pass `nil` to clear it (e.g.
     /// when the user switches active server).
+    ///
+    /// Atomic write — readers in other processes see either the prior value
+    /// or the new one, never a partial file. This is the cross-process
+    /// half of the §5.4 anti-ping-pong guard; the temporal half (writing
+    /// the hash *before* publishing the entry to the server) lives in the
+    /// caller (e.g. `ShareUploader.upload`).
     public func saveLastSyncedHash(_ hash: String?) {
-        if let hash {
-            defaults.set(hash, forKey: AppSettings.PersistenceKey.lastSyncedContentHash)
+        if let hash, !hash.isEmpty {
+            writeLastSyncedHashFile(hash.uppercased())
         } else {
-            defaults.removeObject(forKey: AppSettings.PersistenceKey.lastSyncedContentHash)
+            try? FileManager.default.removeItem(at: lastSyncedHashFileURL)
         }
     }
 
