@@ -5,11 +5,22 @@ import Observation
 /// Reads `UIPasteboard.general` and exposes the result as an observable
 /// `Clipboard?`. App-target-only (UIKit dependency); not built by SwiftPM.
 ///
-/// Re-reads on:
-/// - init (for the cold-launch initial value)
-/// - `UIPasteboard.changedNotification`
-/// - `UIApplication.didBecomeActiveNotification` (foreground)
-/// - explicit `read()` calls from the UI (refresh button / pull-to-refresh)
+/// Two access tiers, split to keep iOS 16+'s "Allow Paste" prompt off the
+/// screen unless the user explicitly asked for content:
+///
+/// **Free, no-prompt detection** (`pollDetectionIfChanged`, `detection`):
+/// reads only `changeCount` + `hasStrings`/`hasImages`/`hasURLs`, none of
+/// which paint the privacy banner or fire the modal. Runs on
+/// `changedNotification`, `didBecomeActiveNotification`, and once per engine
+/// tick when auto-push is OFF (the default). Surfaces the Home one-tap
+/// `PasteButton` hint without ever touching content.
+///
+/// **Content reads** (`read`, `pollIfChanged`, `snapshot`): touch the actual
+/// bytes and so CAN prompt. Driven only by (a) the engine tick when the user
+/// opted into auto-push, or (b) an explicit push action. The Home
+/// `PasteButton` is the prompt-free alternative: it hands us already-read
+/// bytes via `consentPush` → `adoptConsentPush`, so the default push path
+/// reads nothing here at all.
 ///
 /// Reads text and images. Image read priority is PNG > HEIC > JPEG > GIF
 /// (PNG is the screenshot default; HEIC over JPEG matches modern Photos).
@@ -29,14 +40,26 @@ import Observation
 ///   - empty string    → reports `nil` (drives empty-state UI)
 ///   - any other value → reports `Clipboard.fromText(value)`
 ///
-/// Reads on iOS 16+ paint the system "pasted from <App>" banner.
-/// Acceptable for now; switching to `UIPasteControl` to suppress is its
-/// own UI cycle.
+/// Content reads on iOS 16+ paint the system "pasted from <App>" banner
+/// (and the modal for cross-app content). The default push path avoids
+/// both by going through SwiftUI's `PasteButton` (see `PastedItemExtractor`
+/// + `SyncEngine.consentPush`); the content reads that remain here only run
+/// when the user opts into fully-automatic push.
 @MainActor
 @Observable
 final class DevicePasteboardObserver {
 
     private(set) var current: Clipboard?
+
+    /// A free, no-prompt hint that the device pasteboard holds content the
+    /// user could push — derived purely from `changeCount` + the
+    /// `hasStrings`/`hasImages`/`hasURLs` accessors, none of which trigger
+    /// iOS's "Allow Paste" prompt. `nil` when there's nothing new to push
+    /// (empty pasteboard, content we wrote ourselves, or content already
+    /// pushed/dismissed). Home renders a one-tap `PasteButton` card off
+    /// this; the actual content read only happens when the user taps that
+    /// system button (which grants access without a prompt).
+    private(set) var detection: PasteboardDetection?
 
     @ObservationIgnored
     private let envMode: EnvMode
@@ -71,6 +94,16 @@ final class DevicePasteboardObserver {
     /// tick via `pollIfChanged`, which is cheap when nothing changed.
     @ObservationIgnored
     private var lastObservedChangeCount: Int = -1
+
+    /// `UIPasteboard.changeCount` of the most recent content the user
+    /// already pushed via the consent path, OR explicitly dismissed. The
+    /// free detection poll stays quiet (`detection == nil`) until the
+    /// changeCount advances past this — i.e. until the user copies
+    /// something genuinely new. `-1` sentinel so a fresh launch surfaces
+    /// whatever is already on the pasteboard. Distinct from
+    /// `lastWriteChangeCount` (which tracks our own pasteboard *writes*).
+    @ObservationIgnored
+    private var lastConsumedChangeCount: Int = -1
 
     /// Content hash of the most recent value we wrote to `UIPasteboard`,
     /// uppercase. Secondary echo guard: when changeCount drifts past
@@ -111,13 +144,74 @@ final class DevicePasteboardObserver {
         }
     }
 
-    /// Permit pasteboard reads and perform the initial read. Call once
-    /// the home tab is on screen so the iOS "Allow Paste" prompt fires
-    /// in a context the user can reason about. Idempotent — subsequent
-    /// calls just re-read (cheap and useful when re-entering foreground).
+    /// Permit pasteboard access. Call once the home tab is on screen.
+    ///
+    /// Deliberately does **not** read content — it only runs the free
+    /// detection poll. Reading content here is exactly what fired the iOS
+    /// "Allow Paste" prompt on cold launch / first foreground. Content is
+    /// now read only on an explicit user gesture (the Home `PasteButton`)
+    /// or, when the user has opted into auto-push, by the engine tick via
+    /// `pollIfChanged()`. Idempotent.
     func activate() {
         isActive = true
-        read()
+        pollDetectionIfChanged()
+    }
+
+    /// Free, no-prompt poll. Reads only `changeCount` and the
+    /// `hasStrings`/`hasImages`/`hasURLs` accessors — none of which paint
+    /// the privacy banner or fire the "Allow Paste" modal — and updates
+    /// `detection`. Called on foreground / `changedNotification` and once
+    /// per engine tick when auto-push is OFF, so a fresh local copy
+    /// surfaces the Home push hint within one cadence without ever reading
+    /// content the user didn't ask us to read.
+    func pollDetectionIfChanged() {
+        guard isActive, case .live = envMode else { return }
+        let pb = UIPasteboard.general
+        let cc = pb.changeCount
+        // Ours (just applied a server entry) or already pushed/dismissed →
+        // nothing for the user to act on.
+        if cc == lastWriteChangeCount || cc == lastConsumedChangeCount {
+            if detection != nil { detection = nil }
+            return
+        }
+        let kind: PasteboardDetection.Kind?
+        if pb.hasImages      { kind = .image }
+        else if pb.hasURLs   { kind = .url }
+        else if pb.hasStrings { kind = .text }
+        else                 { kind = nil }
+        guard let kind else {
+            if detection != nil { detection = nil }
+            return
+        }
+        let next = PasteboardDetection(kind: kind, changeCount: cc)
+        if detection != next { detection = next }
+    }
+
+    /// Record that the content currently on the pasteboard was just pushed
+    /// to the server via the consent path. Surfaces it as `current` (so the
+    /// Home card/list reflects it), marks its changeCount consumed so the
+    /// detection hint clears and won't re-fire until the next external copy,
+    /// and stashes the content hash so a later content read recognizes it as
+    /// already-synced. No pasteboard write happens — the bytes are already
+    /// there; this is bookkeeping only.
+    func adoptConsentPush(_ clipboard: Clipboard) {
+        current = clipboard
+        detection = nil
+        guard case .live = envMode else { return }
+        let cc = UIPasteboard.general.changeCount
+        lastConsumedChangeCount = cc
+        lastObservedChangeCount = cc
+        lastWrittenContentHash = clipboard.hash?.uppercased()
+    }
+
+    /// User dismissed the push hint without pushing. Mark the current
+    /// changeCount consumed so the card stays hidden until they copy
+    /// something new. No content is read.
+    func dismissDetection() {
+        if case .live = envMode {
+            lastConsumedChangeCount = UIPasteboard.general.changeCount
+        }
+        detection = nil
     }
 
     /// Cheap poll: read `UIPasteboard.general.changeCount` (free, no
@@ -156,12 +250,16 @@ final class DevicePasteboardObserver {
             lastWriteChangeCount = UIPasteboard.general.changeCount
             let adopted = Clipboard.publishText(text).clipboard
             lastWrittenContentHash = adopted.hash?.uppercased()
+            lastConsumedChangeCount = UIPasteboard.general.changeCount
             current = adopted
         case .forceNil, .forceText, .forceImage:
             let adopted = Clipboard.fromText(text)
             lastWrittenContentHash = adopted.hash?.uppercased()
             current = adopted
         }
+        // We just put this on the pasteboard ourselves — it's not something
+        // the user needs to be nudged to push.
+        detection = nil
     }
 
     /// Write `data` to `UIPasteboard.general` under a specific UTI. Used
@@ -199,11 +297,13 @@ final class DevicePasteboardObserver {
         case .live:
             UIPasteboard.general.setData(data, forPasteboardType: uti)
             lastWriteChangeCount = UIPasteboard.general.changeCount
+            lastConsumedChangeCount = lastWriteChangeCount
         case .forceNil, .forceText, .forceImage:
             break
         }
         lastWrittenContentHash = canonicalHash.uppercased()
         current = adopted
+        detection = nil
     }
 
     /// Re-read the pasteboard (or env override) into `current`. Idempotent;
@@ -311,13 +411,19 @@ final class DevicePasteboardObserver {
     }
 
     private func subscribe() {
+        // Both notifications now drive the FREE detection poll, never a
+        // content read. Reading content on `changedNotification` /
+        // `didBecomeActive` is what fired the "Allow Paste" prompt the
+        // moment the user copied something elsewhere and returned. When the
+        // user opts into auto-push, the engine tick does the content read
+        // via `pollIfChanged()` instead.
         observers.append(
             notificationCenter.addObserver(
                 forName: UIPasteboard.changedNotification,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.read() }
+                Task { @MainActor [weak self] in self?.pollDetectionIfChanged() }
             }
         )
         observers.append(
@@ -326,7 +432,7 @@ final class DevicePasteboardObserver {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.read() }
+                Task { @MainActor [weak self] in self?.pollDetectionIfChanged() }
             }
         )
     }
@@ -355,6 +461,18 @@ final class DevicePasteboardObserver {
 
 // `DeviceClipboardSnapshot` moved to `Shared/Models/DeviceClipboardSnapshot.swift`
 // so the Share + Widget extensions can reference it without this UIKit-bound file.
+
+/// A no-prompt detection result: the *kind* of content sitting on the
+/// device pasteboard and the `changeCount` it was seen at. Derived only
+/// from `UIPasteboard.hasImages`/`hasURLs`/`hasStrings` — never from a
+/// content read — so building one of these never triggers iOS's "Allow
+/// Paste" prompt. `changeCount` lets the observer dedup "already pushed /
+/// dismissed" without re-reading.
+struct PasteboardDetection: Equatable {
+    enum Kind: Equatable { case text, url, image }
+    let kind: Kind
+    let changeCount: Int
+}
 
 /// Built-in image fixtures keyed by a short name. Same `red8x8` PNG the
 /// simctl stub serves so device-side `publishImage` and stub-side

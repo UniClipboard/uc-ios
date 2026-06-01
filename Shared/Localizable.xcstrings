@@ -1,6 +1,105 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "服务器的新内容会自动出现在这里；本机内容点下方按钮推送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New content from the server appears here automatically. Push device content with the button below."
+          }
+        }
+      }
+    },
+    "推送本机剪贴板到服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push device clipboard to server"
+          }
+        }
+      }
+    },
+    "本机有新内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New content on this device"
+          }
+        }
+      }
+    },
+    "点「粘贴」推送文本到服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap Paste to push text to the server"
+          }
+        }
+      }
+    },
+    "点「粘贴」推送链接到服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap Paste to push the link to the server"
+          }
+        }
+      }
+    },
+    "点「粘贴」推送图片到服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap Paste to push the image to the server"
+          }
+        }
+      }
+    },
+    "忽略" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dismiss"
+          }
+        }
+      }
+    },
+    "自动推送本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-push device clipboard"
+          }
+        }
+      }
+    },
+    "关闭（推荐）：在主页用「粘贴」按钮一键推送，iOS 不会弹窗。开启后会自动读取并推送本机复制的内容——iOS 在读取其他 App 复制的内容时会弹出「允许粘贴」确认。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off (recommended): push with one tap of the Paste button on the home screen — iOS shows no prompt. When on, content you copy is read and pushed automatically; iOS shows an \"Allow Paste\" confirmation each time it reads content copied from another app."
+          }
+        }
+      }
+    },
     "·" : {
       "extractionState" : "manual",
       "shouldTranslate" : false

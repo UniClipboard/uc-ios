@@ -325,6 +325,10 @@ final class FixturesTests: XCTestCase {
             // Cycle 9 — auto-sync engine. Always encoded (Bool, no nil
             // semantics); fixture omits it and decode falls back to true.
             "autoApplyServerChanges",
+            // Consent-push cycle — auto-read/push of the device pasteboard.
+            // Always encoded (Bool); fixture omits it and decode falls back
+            // to false (manual PasteButton push is the default).
+            "autoPushDeviceChanges",
             // Cycle 12 — PayloadCache settings. Same Bool/Int defaulting
             // rule: fixture omits them and decode falls back to defaults.
             "prefetchAttachments", "prefetchOnCellular", "payloadCacheMaxBytes",

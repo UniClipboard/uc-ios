@@ -57,6 +57,15 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle(isOn: $vm.appSettings.autoPushDeviceChanges) {
+                    Label("自动推送本机剪贴板", systemImage: "arrow.up.doc")
+                }
+            } footer: {
+                Text("关闭（推荐）：在主页用「粘贴」按钮一键推送，iOS 不会弹窗。开启后会自动读取并推送本机复制的内容——iOS 在读取其他 App 复制的内容时会弹出「允许粘贴」确认。")
+                    .font(.caption)
+            }
+
+            Section {
                 Toggle(isOn: $vm.appSettings.autoCheckUpdate) {
                     Label("启动时检查更新", systemImage: "arrow.triangle.2.circlepath")
                 }

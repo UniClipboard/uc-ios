@@ -406,14 +406,19 @@ final class SyncEngine {
             return
         }
         if state == .authFailed || state == .loopDetected { return }
-        // Pasteboard refresh: `UIPasteboard.changedNotification` does not
-        // reliably fire for cross-app changes, and the iOS 16+ "Allow
-        // Paste" modal swallows the very first read after foreground
-        // (tapping Allow grants permission for future reads but does not
-        // re-deliver the bytes to the call that triggered the modal).
-        // Poll once per tick; `pollIfChanged` is changeCount-gated so the
-        // content-access call only happens when something actually moved.
-        vm.pollPasteboardIfChanged()
+        // Pasteboard refresh. Two modes:
+        // - Auto-push ON: read content (`pollIfChanged`) so the engine can
+        //   push fresh local copies automatically. This is what fires the
+        //   iOS "Allow Paste" prompt — opt-in only.
+        // - Auto-push OFF (default): only the FREE detection poll, which
+        //   reads `changeCount`/`hasStrings` (no prompt) to surface the
+        //   Home one-tap `PasteButton` hint. Content is read solely on the
+        //   user's explicit tap of that system control.
+        if vm.appSettings.autoPushDeviceChanges {
+            vm.pollPasteboardIfChanged()
+        } else {
+            vm.pollPasteboardDetection()
+        }
         log.debug("tick: explicit=\(explicit, privacy: .public) state=\(String(describing: self.state), privacy: .public) url=\(server.url, privacy: .public) consecutiveFailures=\(self.consecutiveFailures, privacy: .public)")
         // Cross-process re-sync: the Share Extension writes
         // `lastSyncedContentHash` directly into the App Group when it
@@ -580,6 +585,15 @@ final class SyncEngine {
         vm: AppViewModel,
         server: ServerConfig
     ) async throws {
+        guard vm.appSettings.autoPushDeviceChanges else {
+            // Consent-push mode (default): the engine never reads the
+            // pasteboard or pushes on its own — device→server happens only
+            // when the user taps the Home `PasteButton` (see `consentPush`).
+            // Nothing to do here; the tick is healthy.
+            state = .succeeded
+            lastError = nil
+            return
+        }
         guard let device = vm.deviceClipboard else {
             // Observer hasn't surfaced anything yet (cold start, env-hook
             // returned nil, etc). Nothing to push — and nothing to claim
@@ -641,6 +655,48 @@ final class SyncEngine {
         state = .succeeded
         lastSyncedAt = .now
         lastError = nil
+    }
+
+    /// Push content the user explicitly handed us via the Home
+    /// `PasteButton`. Distinct from `maybePush`: the bytes are already in
+    /// hand (the system paste control granted access without a prompt), so
+    /// we PUT directly via `vm.pushSnapshot` — no `UIPasteboard` read. On
+    /// success we run the same bookkeeping `maybePush` does (advance synced
+    /// hash so the next pull doesn't echo it, log history, cycle-guard,
+    /// Siri donation) plus `adoptConsentPush` so the device card reflects it
+    /// and the push hint clears. Errors land in `state`/`lastError` exactly
+    /// like a routine push failure, so the existing Home issue chrome
+    /// surfaces them. Runs regardless of `autoPushDeviceChanges` — it's the
+    /// default push path, not gated by the auto-push opt-in.
+    func consentPush(_ snapshot: DeviceClipboardSnapshot) async {
+        guard let vm = viewModel, let server = vm.effectiveActiveConfig else { return }
+        if state == .authFailed || state == .loopDetected { return }
+        do {
+            guard let entry = try await vm.pushSnapshot(snapshot) else { return }
+            advanceSynced(to: entry.hash)
+            lastAppliedContentHash = entry.hash?.uppercased()
+            vm.appendHistory(entry: entry, direction: .pushed)
+            vm.adoptConsentPush(entry)
+            loopGuard.record(.pushed, hash: entry.hash)
+            if loopGuard.tripped() { tripLoopBreaker(); return }
+            state = .succeeded
+            lastSyncedAt = .now
+            lastError = nil
+            consecutiveFailures = 0
+            Task { await ShareIntentDonation.donateSend(to: server, clipboard: entry) }
+        } catch let e as SyncError where e.kind == .authFailed {
+            state = .authFailed
+            lastError = e
+            stop()
+        } catch let e as SyncError {
+            consecutiveFailures += 1
+            state = .offlineRetrying
+            lastError = e
+        } catch {
+            consecutiveFailures += 1
+            state = .offlineRetrying
+            lastError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
+        }
     }
 
     private func advanceSynced(to hash: String?) {

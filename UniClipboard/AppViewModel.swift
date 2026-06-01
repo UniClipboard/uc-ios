@@ -318,16 +318,45 @@ final class AppViewModel {
     /// re-read automatically.
     func readPasteboard() { pasteboard.read() }
 
-    /// Cheap changeCount-gated poll. Called by `SyncEngine` once per tick
-    /// so cross-app copies (which `UIPasteboard.changedNotification` does
-    /// not reliably deliver, and which the "Allow Paste" modal can swallow
-    /// on first foreground read) propagate within one cadence.
+    /// Cheap changeCount-gated CONTENT poll. Reads `UIPasteboard` and may
+    /// fire the "Allow Paste" prompt — only called by `SyncEngine` when the
+    /// user has opted into auto-push (`autoPushDeviceChanges`).
     func pollPasteboardIfChanged() { pasteboard.pollIfChanged() }
 
-    /// Permit pasteboard reads. Call once the main tabs are on screen so
-    /// the iOS 16+ "Allow Paste" prompt fires after the user has visual
-    /// context, not during cold launch / Setup. Idempotent.
+    /// Free, no-prompt detection poll. Updates `pasteboardDetection` from
+    /// `changeCount`/`hasStrings` only. Called by `SyncEngine` each tick
+    /// when auto-push is OFF (the default) so a fresh local copy surfaces
+    /// the Home push hint without ever reading content unprompted.
+    func pollPasteboardDetection() { pasteboard.pollDetectionIfChanged() }
+
+    /// No-prompt hint that the device pasteboard holds pushable content.
+    /// Drives the Home one-tap `PasteButton` card. `nil` when there's
+    /// nothing new to push. Observable through the underlying observer.
+    var pasteboardDetection: PasteboardDetection? { pasteboard.detection }
+
+    /// User dismissed the Home push hint without pushing — suppress it
+    /// until they copy something new.
+    func dismissPasteboardHint() { pasteboard.dismissDetection() }
+
+    /// Push content the user just handed us via the Home `PasteButton`.
+    /// The system paste control already granted access (no prompt), so we
+    /// extract the providers and route them through the engine's consent
+    /// push — which PUTs the bytes, advances the synced hash (so the next
+    /// pull doesn't echo it back), logs history, and clears the hint.
+    func pushPastedProviders(_ providers: [NSItemProvider]) async {
+        guard let snapshot = await PastedItemExtractor.snapshot(from: providers) else { return }
+        await engine.consentPush(snapshot)
+    }
+
+    /// Permit pasteboard access. Call once the main tabs are on screen.
+    /// Runs only the free detection poll — it does NOT read content, so it
+    /// no longer fires the iOS "Allow Paste" prompt on launch. Idempotent.
     func activatePasteboard() { pasteboard.activate() }
+
+    /// Forwarded from `SyncEngine.consentPush` after a successful Home
+    /// `PasteButton` push: mark the pushed content as the current device
+    /// clipboard and clear the push hint.
+    func adoptConsentPush(_ entry: Clipboard) { pasteboard.adoptConsentPush(entry) }
 
     /// Re-copy a historical text entry back onto the device pasteboard.
     /// The observer adopts the new value immediately, so the next
@@ -855,10 +884,28 @@ extension AppViewModel {
     /// point ran.
     @discardableResult
     func pushReturningEntry() async throws -> Clipboard? {
-        guard !isPushing else { return nil }
-        guard let server = effectiveActiveConfig else { return nil }
+        // Guard server + in-flight BEFORE snapshotting — `pasteboard.snapshot()`
+        // reads content and can fire the "Allow Paste" prompt, so we don't
+        // want it firing when there's nothing to push to.
+        guard !isPushing, effectiveActiveConfig != nil else { return nil }
         guard let snapshot = pasteboard.snapshot(),
               snapshot.clipboard.type == .text || snapshot.clipboard.type == .image
+        else { return nil }
+        return try await pushSnapshot(snapshot)
+    }
+
+    /// Push an already-materialized `DeviceClipboardSnapshot` — the network
+    /// half of `pushReturningEntry()`, split out so the consent-push path
+    /// (Home `PasteButton`) can push the bytes it got from the system paste
+    /// control WITHOUT re-reading `UIPasteboard` (which would re-trigger the
+    /// prompt the whole feature exists to avoid). Same observable surface
+    /// (`pushError`/`lastPushedAt`/`serverLatest`) and silent-skip / throw
+    /// contract as the snapshot-reading variant.
+    @discardableResult
+    func pushSnapshot(_ snapshot: DeviceClipboardSnapshot) async throws -> Clipboard? {
+        guard !isPushing else { return nil }
+        guard let server = effectiveActiveConfig else { return nil }
+        guard snapshot.clipboard.type == .text || snapshot.clipboard.type == .image
         else { return nil }
         isPushing = true
         defer { isPushing = false }
