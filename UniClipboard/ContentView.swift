@@ -112,6 +112,13 @@ struct ContentView: View {
             // UC_AUTO_SAVE stays a direct call: saving to Documents is a
             // discrete user action, not part of the auto-sync loop.
             let env = ProcessInfo.processInfo.environment
+            if env["UC_AUTO_PUSH"] == "1" {
+                // Auto-push is opt-in now (default off — the headline push
+                // path is the Home PasteButton). The screenshot recipe wants
+                // the engine to push the env-seeded pasteboard, so enable the
+                // opt-in for this run before kicking the tick.
+                vm.appSettings.autoPushDeviceChanges = true
+            }
             if env["UC_AUTO_PUSH"] == "1" || env["UC_AUTO_APPLY"] == "1" {
                 vm.engine.forceTickNow()
             }

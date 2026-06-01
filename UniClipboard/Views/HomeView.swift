@@ -127,7 +127,13 @@ struct HomeView: View {
                     Image(systemName: "doc.on.clipboard")
                 }
             } description: {
-                Text("复制任何内容会自动同步")
+                Text("服务器的新内容会自动出现在这里；本机内容点下方按钮推送")
+            } actions: {
+                PasteButton(supportedContentTypes: PastedItemExtractor.supportedContentTypes) { providers in
+                    Task { await vm.pushPastedProviders(providers) }
+                }
+                .tint(.accentColor)
+                .accessibilityLabel(Text("推送本机剪贴板到服务器"))
             }
         } else {
             List {
@@ -205,21 +211,39 @@ struct HomeView: View {
             .listRowSpacing(8)
             .environment(\.defaultMinListHeaderHeight, 0)
             .safeAreaInset(edge: .top, spacing: 0) {
-                if engineState == .hasNewUnwritten {
-                    PendingBanner {
-                        Task {
-                            await vm.applyServerToDevice()
-                            // `applyError == nil` covers the text-no-data (sync
-                            // path, applyError is set to nil before return) and
-                            // text/image-with-data success cases. On a network
-                            // failure applyError is set, banner stays so the
-                            // user can retry.
-                            if vm.applyError == nil {
-                                vm.engine.markStagedApplied()
+                VStack(spacing: 0) {
+                    if engineState == .hasNewUnwritten {
+                        PendingBanner {
+                            Task {
+                                await vm.applyServerToDevice()
+                                // `applyError == nil` covers the text-no-data (sync
+                                // path, applyError is set to nil before return) and
+                                // text/image-with-data success cases. On a network
+                                // failure applyError is set, banner stays so the
+                                // user can retry.
+                                if vm.applyError == nil {
+                                    vm.engine.markStagedApplied()
+                                }
                             }
                         }
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    // Push hint: free changeCount/hasStrings detection noticed
+                    // new local content. Tapping the system `PasteButton`
+                    // reads + pushes it with NO "Allow Paste" prompt. Hidden
+                    // when the user opted into fully-automatic push (the engine
+                    // handles it then) — see `autoPushDeviceChanges`.
+                    if !vm.appSettings.autoPushDeviceChanges,
+                       let detection = vm.pasteboardDetection {
+                        PushHintCard(
+                            kind: detection.kind,
+                            onPaste: { providers in
+                                Task { await vm.pushPastedProviders(providers) }
+                            },
+                            onDismiss: { vm.dismissPasteboardHint() }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -257,6 +281,7 @@ struct HomeView: View {
             .animation(.snappy, value: engineState)
             .animation(.snappy, value: vm.lastSavedFileURL)
             .animation(.snappy, value: vm.lastAppliedAttachmentName)
+            .animation(.snappy, value: vm.pasteboardDetection)
         }
     }
 
@@ -497,6 +522,68 @@ private struct PendingBanner: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            Color.accentColor.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+}
+
+/// Inset card pinned above the list when the FREE pasteboard detection
+/// (changeCount + hasStrings/hasImages, no content read) spots new local
+/// content. The actual read happens only when the user taps the embedded
+/// system `PasteButton`, which grants access without the "Allow Paste"
+/// prompt — the whole reason this card exists instead of an auto-read.
+/// `onDismiss` hides it until the next external copy.
+private struct PushHintCard: View {
+    let kind: PasteboardDetection.Kind
+    let onPaste: ([NSItemProvider]) -> Void
+    let onDismiss: () -> Void
+
+    private var subtitle: LocalizedStringKey {
+        switch kind {
+        case .text:  "点「粘贴」推送文本到服务器"
+        case .url:   "点「粘贴」推送链接到服务器"
+        case .image: "点「粘贴」推送图片到服务器"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("本机有新内容")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            PasteButton(supportedContentTypes: PastedItemExtractor.supportedContentTypes, payloadAction: onPaste)
+                .labelStyle(.titleAndIcon)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .tint(.accentColor)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .padding(6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("忽略"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

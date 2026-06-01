@@ -678,13 +678,21 @@ contained in the normalized `cfg.autoSwitchWifiNames`.
   "manualUploadDialogShown":  false,    // user dismissed first-run hint
   "downloadRelativePath":     "",       // subdirectory under the platform Downloads dir
   "logViewLevelFilter":       "info",   // last-used log level filter
-  "ignoredVersion":           null      // version string the user chose to skip
+  "ignoredVersion":           null,     // version string the user chose to skip
+  "autoApplyServerChanges":   true,     // write new server content to the device clipboard automatically
+  "autoPushDeviceChanges":    false     // read + push new local clipboard content automatically
 }
 ```
 
 - All fields have defaults (shown). A missing key MUST be filled with its
   default; the file MUST still parse if extra unknown keys are present
   (forward compatibility).
+- `autoPushDeviceChanges` defaults **false** on iOS: reading `UIPasteboard`
+  content fires the system "Allow Paste" prompt, so device→server push is
+  consent-based by default (a `PasteButton` the user taps). Setting it true
+  opts into fully-automatic push and the recurring prompt that entails. A
+  client MAY persist additional UI/cache keys (appearance, prefetch policy,
+  payload cache size); they follow the same default-and-tolerate rule.
 
 ### 5.5 Persistence keys
 
