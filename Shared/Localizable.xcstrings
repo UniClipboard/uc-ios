@@ -1,83 +1,6 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "服务器的新内容会自动出现在这里；本机内容点下方按钮推送" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New content from the server appears here automatically. Push device content with the button below."
-          }
-        }
-      }
-    },
-    "推送本机剪贴板到服务器" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Push device clipboard to server"
-          }
-        }
-      }
-    },
-    "本机有新文本" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New text on this device"
-          }
-        }
-      }
-    },
-    "本机有新链接" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New link on this device"
-          }
-        }
-      }
-    },
-    "本机有新图片" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New image on this device"
-          }
-        }
-      }
-    },
-    "自动推送本机剪贴板" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto-push device clipboard"
-          }
-        }
-      }
-    },
-    "关闭（推荐）：在主页用「粘贴」按钮一键推送，iOS 不会弹窗。开启后会自动读取并推送本机复制的内容——iOS 在读取其他 App 复制的内容时会弹出「允许粘贴」确认。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Off (recommended): push with one tap of the Paste button on the home screen — iOS shows no prompt. When on, content you copy is read and pushed automatically; iOS shows an \"Allow Paste\" confirmation each time it reads content copied from another app."
-          }
-        }
-      }
-    },
     "·" : {
       "extractionState" : "manual",
       "shouldTranslate" : false
@@ -187,6 +110,17 @@
     "URL" : {
       "extractionState" : "manual",
       "shouldTranslate" : false
+    },
+    "WiFi 切换提示" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wi-Fi Switch Prompt"
+          }
+        }
+      }
     },
     "一键接收 / 发送剪贴板" : {
       "extractionState" : "manual",
@@ -490,6 +424,17 @@
         }
       }
     },
+    "关闭（推荐）：在主页用「粘贴」按钮一键推送，iOS 不会弹窗。开启后会自动读取并推送本机复制的内容——iOS 在读取其他 App 复制的内容时会弹出「允许粘贴」确认。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off (recommended): push with one tap of the Paste button on the home screen — iOS shows no prompt. When on, content you copy is read and pushed automatically; iOS shows an \"Allow Paste\" confirmation each time it reads content copied from another app."
+          }
+        }
+      }
+    },
     "其他" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -561,6 +506,17 @@
     },
     "分享到 UniClipboard" : {
 
+    },
+    "切换" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch"
+          }
+        }
+      }
     },
     "切换服务器" : {
       "extractionState" : "manual",
@@ -1032,6 +988,17 @@
         }
       }
     },
+    "左滑可设为当前服务器或删除。WiFi 自动切换：连接到匹配 SSID 时会提示切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe to set as the current server or delete. Wi-Fi switching: you'll be prompted to switch to this server when you join a matching SSID."
+          }
+        }
+      }
+    },
     "已下载的图片和长文本将被删除。下次查看时会重新下载。" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1241,6 +1208,17 @@
         }
       }
     },
+    "当前 Wi-Fi「%@」匹配「%@」，切换?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current Wi-Fi \"%1$@\" matches \"%2$@\" — switch?"
+          }
+        }
+      }
+    },
     "当前剪贴板" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1281,6 +1259,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This device cannot read the Wi-Fi name"
+          }
+        }
+      }
+    },
+    "忽略" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ignore"
           }
         }
       }
@@ -1468,6 +1457,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Push Current Clipboard"
+          }
+        }
+      }
+    },
+    "推送本机剪贴板到服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push device clipboard to server"
           }
         }
       }
@@ -1745,6 +1745,17 @@
         }
       }
     },
+    "服务器的新内容会自动出现在这里；本机内容点下方按钮推送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New content from the server appears here automatically. Push device content with the button below."
+          }
+        }
+      }
+    },
     "服务器返回 HTTP %lld" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1865,6 +1876,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Device differs from server · ready to push."
+          }
+        }
+      }
+    },
+    "本机有新图片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New image on this device"
+          }
+        }
+      }
+    },
+    "本机有新文本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New text on this device"
+          }
+        }
+      }
+    },
+    "本机有新链接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New link on this device"
           }
         }
       }
@@ -2252,6 +2296,17 @@
         }
       }
     },
+    "自动推送本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-push device clipboard"
+          }
+        }
+      }
+    },
     "蜂窝下也预下载" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2303,6 +2358,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Authentication failed — check username and password"
+          }
+        }
+      }
+    },
+    "设为当前服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set as Current Server"
           }
         }
       }
@@ -2453,6 +2519,28 @@
         }
       }
     },
+    "连接到指定 WiFi 时，提示切换到此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optionally get prompted to switch to this server when you join specific Wi-Fi networks. You can change this later in Settings → Servers."
+          }
+        }
+      }
+    },
+    "连接到这里的任一 SSID 时，会提示切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You'll be prompted to switch to this server when you join any of these Wi-Fi networks."
+          }
+        }
+      }
+    },
     "连接超时 — 请检查服务器地址" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2548,94 +2636,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Default"
-          }
-        }
-      }
-    },
-    "当前 Wi-Fi「%@」匹配「%@」，切换?" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Current Wi-Fi \"%1$@\" matches \"%2$@\" — switch?"
-          }
-        }
-      }
-    },
-    "忽略" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ignore"
-          }
-        }
-      }
-    },
-    "切换" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Switch"
-          }
-        }
-      }
-    },
-    "设为当前服务器" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Set as Current Server"
-          }
-        }
-      }
-    },
-    "左滑可设为当前服务器或删除。WiFi 自动切换：连接到匹配 SSID 时会提示切换到该服务器。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Swipe to set as the current server or delete. Wi-Fi switching: you'll be prompted to switch to this server when you join a matching SSID."
-          }
-        }
-      }
-    },
-    "WiFi 切换提示" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wi-Fi Switch Prompt"
-          }
-        }
-      }
-    },
-    "连接到这里的任一 SSID 时，会提示切换到该服务器。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "You'll be prompted to switch to this server when you join any of these Wi-Fi networks."
-          }
-        }
-      }
-    },
-    "连接到指定 WiFi 时，提示切换到此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Optionally get prompted to switch to this server when you join specific Wi-Fi networks. You can change this later in Settings → Servers."
           }
         }
       }

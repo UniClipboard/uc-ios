@@ -231,14 +231,16 @@ private struct ServersListView: View {
                 addDraft = ServerDraft(existingNames: existingNames(excludingId: ""))
             }
         }
-        .sheet(item: $addDraft) { _ in
-            // Bind to the @State so edits during the sheet propagate back
-            // to `addDraft`, which the save action reads.
+        .sheet(item: $addDraft) { draft in
+            // Seed the sheet with the presented draft and let it own the
+            // edit buffer internally. We deliberately do NOT hand it a
+            // Binding back to `addDraft`: a trailing field commit during
+            // the dismiss animation would flow through that Binding's
+            // setter and — because the getter synthesizes a fresh draft
+            // when `addDraft == nil` — resurrect `addDraft` into a new
+            // blank draft, re-presenting the sheet as if "add another".
             AddServerSheet(
-                draft: Binding(
-                    get: { addDraft ?? ServerDraft(existingNames: []) },
-                    set: { addDraft = $0 }
-                ),
+                draft: draft,
                 trustInsecureCert: $trustInsecureCert,
                 ssidProvider: ssidProvider,
                 onCancel: { addDraft = nil },
@@ -476,7 +478,11 @@ private struct ServerDraft: Identifiable, Equatable {
 }
 
 private struct AddServerSheet: View {
-    @Binding var draft: ServerDraft
+    /// Local working copy, seeded once from the presented draft. Kept as
+    /// `@State` (not a Binding back to the parent's `addDraft`) so edits —
+    /// including the keyboard's trailing commit on dismiss — stay inside
+    /// the sheet and can't resurrect `addDraft` into a fresh blank form.
+    @State private var draft: ServerDraft
     @Binding var trustInsecureCert: Bool
     let ssidProvider: CurrentSSIDProvider
     var onCancel: () -> Void
@@ -485,6 +491,20 @@ private struct AddServerSheet: View {
     @State private var newSSID: String = ""
     @State private var test: ConnectionTestState = .idle
     @State private var scannerPresented: Bool = false
+
+    init(
+        draft: ServerDraft,
+        trustInsecureCert: Binding<Bool>,
+        ssidProvider: CurrentSSIDProvider,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (ServerDraft) -> Void
+    ) {
+        _draft = State(initialValue: draft)
+        _trustInsecureCert = trustInsecureCert
+        self.ssidProvider = ssidProvider
+        self.onCancel = onCancel
+        self.onSave = onSave
+    }
 
     private var canSave: Bool {
         !draft.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
