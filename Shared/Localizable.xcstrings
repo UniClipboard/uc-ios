@@ -23,57 +23,35 @@
         }
       }
     },
-    "本机有新内容" : {
+    "本机有新文本" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "New content on this device"
+            "value" : "New text on this device"
           }
         }
       }
     },
-    "点「粘贴」推送文本到服务器" : {
+    "本机有新链接" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap Paste to push text to the server"
+            "value" : "New link on this device"
           }
         }
       }
     },
-    "点「粘贴」推送链接到服务器" : {
+    "本机有新图片" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap Paste to push the link to the server"
-          }
-        }
-      }
-    },
-    "点「粘贴」推送图片到服务器" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap Paste to push the image to the server"
-          }
-        }
-      }
-    },
-    "忽略" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dismiss"
+            "value" : "New image on this device"
           }
         }
       }

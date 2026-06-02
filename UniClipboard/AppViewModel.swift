@@ -330,13 +330,10 @@ final class AppViewModel {
     func pollPasteboardDetection() { pasteboard.pollDetectionIfChanged() }
 
     /// No-prompt hint that the device pasteboard holds pushable content.
-    /// Drives the Home one-tap `PasteButton` card. `nil` when there's
-    /// nothing new to push. Observable through the underlying observer.
+    /// Drives the Home outgoing push row (`SyncNudgeStack`). `nil` when
+    /// there's nothing new to push. Observable through the underlying
+    /// observer; cleared by `adoptConsentPush` on a successful push.
     var pasteboardDetection: PasteboardDetection? { pasteboard.detection }
-
-    /// User dismissed the Home push hint without pushing — suppress it
-    /// until they copy something new.
-    func dismissPasteboardHint() { pasteboard.dismissDetection() }
 
     /// Push content the user just handed us via the Home `PasteButton`.
     /// The system paste control already granted access (no prompt), so we

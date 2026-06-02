@@ -211,40 +211,34 @@ struct HomeView: View {
             .listRowSpacing(8)
             .environment(\.defaultMinListHeaderHeight, 0)
             .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 0) {
-                    if engineState == .hasNewUnwritten {
-                        PendingBanner {
-                            Task {
-                                await vm.applyServerToDevice()
-                                // `applyError == nil` covers the text-no-data (sync
-                                // path, applyError is set to nil before return) and
-                                // text/image-with-data success cases. On a network
-                                // failure applyError is set, banner stays so the
-                                // user can retry.
-                                if vm.applyError == nil {
-                                    vm.engine.markStagedApplied()
-                                }
+                // Incoming (server→device) and outgoing (device→server)
+                // nudges share one rounded container so they read as a
+                // matched pair, not two near-identical stacked cards. Either
+                // row may be absent; a hairline divides them only when both
+                // show. The outgoing row's read goes through the system
+                // `PasteButton` (no "Allow Paste" prompt); it's suppressed
+                // when the user opted into fully-automatic push — the engine
+                // pushes on its own then (see `autoPushDeviceChanges`).
+                SyncNudgeStack(
+                    showPending: engineState == .hasNewUnwritten,
+                    onApply: {
+                        Task {
+                            await vm.applyServerToDevice()
+                            // `applyError == nil` covers the text-no-data (sync
+                            // path, applyError is set to nil before return) and
+                            // text/image-with-data success cases. On a network
+                            // failure applyError is set, the row stays so the
+                            // user can retry.
+                            if vm.applyError == nil {
+                                vm.engine.markStagedApplied()
                             }
                         }
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    },
+                    detection: vm.appSettings.autoPushDeviceChanges ? nil : vm.pasteboardDetection,
+                    onPaste: { providers in
+                        Task { await vm.pushPastedProviders(providers) }
                     }
-                    // Push hint: free changeCount/hasStrings detection noticed
-                    // new local content. Tapping the system `PasteButton`
-                    // reads + pushes it with NO "Allow Paste" prompt. Hidden
-                    // when the user opted into fully-automatic push (the engine
-                    // handles it then) — see `autoPushDeviceChanges`.
-                    if !vm.appSettings.autoPushDeviceChanges,
-                       let detection = vm.pasteboardDetection {
-                        PushHintCard(
-                            kind: detection.kind,
-                            onPaste: { providers in
-                                Task { await vm.pushPastedProviders(providers) }
-                            },
-                            onDismiss: { vm.dismissPasteboardHint() }
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
+                )
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 // `lastSavedFileURL` and `lastAppliedAttachmentName` are
@@ -502,7 +496,53 @@ private struct ClipboardRow: View {
 /// server content. Tapping "应用" pushes it into UIPasteboard. Sits inside
 /// the same scroll surface (safeAreaInset) so it scrolls with the list
 /// instead of orphaning at the top of the screen.
-private struct PendingBanner: View {
+/// Top-pinned nudge pair. The incoming row (server has new content → 应用)
+/// and the outgoing row (device has new content → 粘贴, via the prompt-free
+/// system `PasteButton`) share one rounded container with a hairline
+/// between, so the two read as a deliberate matched pair instead of two
+/// stacked look-alike cards. Either row may be absent. Neither row carries
+/// a dismiss control: both simply wait until the user acts or the
+/// underlying content changes (strict symmetry — and the free detection
+/// behind the outgoing row never reads content until the `PasteButton` is
+/// tapped, so a lingering row costs nothing and leaks nothing).
+private struct SyncNudgeStack: View {
+    let showPending: Bool
+    let onApply: () -> Void
+    /// Non-nil ⇒ render the outgoing row. Caller passes `nil` under
+    /// auto-push, when the engine pushes on its own.
+    let detection: PasteboardDetection?
+    let onPaste: ([NSItemProvider]) -> Void
+
+    var body: some View {
+        if showPending || detection != nil {
+            VStack(spacing: 0) {
+                if showPending {
+                    PendingRow(onApply: onApply)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if showPending, detection != nil {
+                    Divider()
+                }
+                if let detection {
+                    PushRow(kind: detection.kind, onPaste: onPaste)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .background(
+                Color.accentColor.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+}
+
+/// Incoming nudge: the server staged content the device hasn't written
+/// yet. Single-line so it height-matches `PushRow` in the shared container.
+private struct PendingRow: View {
     let onApply: () -> Void
 
     var body: some View {
@@ -525,32 +565,25 @@ private struct PendingBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(
-            Color.accentColor.opacity(0.12),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 }
 
-/// Inset card pinned above the list when the FREE pasteboard detection
-/// (changeCount + hasStrings/hasImages, no content read) spots new local
-/// content. The actual read happens only when the user taps the embedded
-/// system `PasteButton`, which grants access without the "Allow Paste"
-/// prompt — the whole reason this card exists instead of an auto-read.
-/// `onDismiss` hides it until the next external copy.
-private struct PushHintCard: View {
+/// Outgoing nudge: the FREE pasteboard detection (changeCount +
+/// hasStrings/hasImages, no content read) spotted new local content. The
+/// kind is folded into the title so the row stays single-line and
+/// symmetric with `PendingRow`. The actual read happens only when the user
+/// taps the embedded system `PasteButton`, which grants access without the
+/// "Allow Paste" prompt — the whole reason this is a `PasteButton` and not
+/// a plain button.
+private struct PushRow: View {
     let kind: PasteboardDetection.Kind
     let onPaste: ([NSItemProvider]) -> Void
-    let onDismiss: () -> Void
 
-    private var subtitle: LocalizedStringKey {
+    private var title: LocalizedStringKey {
         switch kind {
-        case .text:  "点「粘贴」推送文本到服务器"
-        case .url:   "点「粘贴」推送链接到服务器"
-        case .image: "点「粘贴」推送图片到服务器"
+        case .text:  "本机有新文本"
+        case .url:   "本机有新链接"
+        case .image: "本机有新图片"
         }
     }
 
@@ -559,41 +592,19 @@ private struct PushHintCard: View {
             Image(systemName: "arrow.up.circle.fill")
                 .font(.title3)
                 .foregroundStyle(.tint)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("本机有新内容")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
             Spacer(minLength: 8)
             PasteButton(supportedContentTypes: PastedItemExtractor.supportedContentTypes, payloadAction: onPaste)
                 .labelStyle(.titleAndIcon)
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
                 .tint(.accentColor)
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .padding(6)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("忽略"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(
-            Color.accentColor.opacity(0.12),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 }
 

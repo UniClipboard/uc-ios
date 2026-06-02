@@ -204,16 +204,6 @@ final class DevicePasteboardObserver {
         lastWrittenContentHash = clipboard.hash?.uppercased()
     }
 
-    /// User dismissed the push hint without pushing. Mark the current
-    /// changeCount consumed so the card stays hidden until they copy
-    /// something new. No content is read.
-    func dismissDetection() {
-        if case .live = envMode {
-            lastConsumedChangeCount = UIPasteboard.general.changeCount
-        }
-        detection = nil
-    }
-
     /// Cheap poll: read `UIPasteboard.general.changeCount` (free, no
     /// privacy banner) and only call `read()` when it has advanced past
     /// both our own last write and our last observed value. Called from
