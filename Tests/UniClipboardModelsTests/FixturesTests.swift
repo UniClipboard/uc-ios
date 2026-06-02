@@ -188,67 +188,53 @@ final class FixturesTests: XCTestCase {
         XCTAssertEqual(cfg.displayLabel, "http://h")
     }
 
-    func test_resolveActive_defaultWinsWhenItAlsoMatchesSSID() {
-        // Both default A and non-default B configure "Home". Default wins.
+    func test_suggestedSwitch_nilWhenCurrentItselfMatchesSSID() {
+        // Current server A matches "Home". Even though non-default B also
+        // matches, there's nothing to suggest — we're already on a server
+        // that fits this network.
         let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
         let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
         let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "a",
-                       "default must win when it also has a matching SSID rule")
+        XCTAssertNil(list.suggestedSwitch(currentSsid: "Home"),
+                     "no suggestion when the current server already matches")
     }
 
-    func test_resolveActive_nonDefaultStillWinsWhenDefaultDoesNotMatch() {
-        // Default A has no rule; B has "Home". B wins (unchanged behavior).
+    func test_suggestedSwitch_returnsNonDefaultMatchWhenCurrentDoesNotMatch() {
+        // Current A has no rule; B has "Home". On "Home" → suggest B.
         let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
         let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
         let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "b")
+        XCTAssertEqual(list.suggestedSwitch(currentSsid: "Home")?.id, "b")
     }
 
-    func test_manualOverride_winsOverSSIDAutoSwitch() {
-        // Server A is the default; Server B has an autoSwitchWifiNames rule
-        // matching the current SSID. With no override, §5.3 picks B. With
-        // a manual override pinning A, A wins.
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p", autoSwitchWifiNames: [])
+    func test_suggestedSwitch_nilWhenSsidUnknownOrNoMatch() {
+        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
         let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p", autoSwitchWifiNames: ["Home"])
-        var list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "b",
-                       "without override SSID rule should win")
-        list.manualOverrideConfigId = "a"
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "Home")?.id, "a",
-                       "manual pin must beat SSID rule")
+        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
+        XCTAssertNil(list.suggestedSwitch(currentSsid: nil), "no SSID → no basis to suggest")
+        XCTAssertNil(list.suggestedSwitch(currentSsid: "<unknown ssid>"))
+        XCTAssertNil(list.suggestedSwitch(currentSsid: "Cafe"), "no rule matches → no suggestion")
     }
 
-    func test_manualOverride_winsOverActiveConfigDefault() {
-        // No SSID context — the pin should still override the default.
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
-        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p")
-        let list = ServerConfigList(configs: [a, b], activeConfigId: "a", manualOverrideConfigId: "b")
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: nil)?.id, "b")
+    func test_legacyManualOverride_promotedToActiveConfigOnDecode() throws {
+        // Pre-unification installs persisted a home-chip "pin" in
+        // `manualOverrideConfigId`. On decode it must be promoted to
+        // `activeConfigId` (the user's last explicit pick becomes current).
+        let json = #"{"configs":[{"id":"a","url":"http://a","username":"u","password":"p"},{"id":"b","url":"http://b","username":"u","password":"p"}],"activeConfigId":"a","manualOverrideConfigId":"b"}"#
+        let decoded = try JSONDecoder().decode(ServerConfigList.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.activeConfigId, "b",
+                       "a resolvable legacy pin must become the current server")
     }
 
-    func test_manualOverride_ignoredWhenIdDoesNotResolve() {
-        // Phantom override id falls through to the normal default/SSID path.
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
-        let list = ServerConfigList(configs: [a], activeConfigId: "a", manualOverrideConfigId: "ghost")
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: nil)?.id, "a")
-    }
-
-    func test_manualOverride_roundTripsThroughJSON() throws {
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
-        let original = ServerConfigList(configs: [a], activeConfigId: "a", manualOverrideConfigId: "a")
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(ServerConfigList.self, from: data)
-        XCTAssertEqual(decoded.manualOverrideConfigId, "a")
-    }
-
-    func test_manualOverride_absentInOldJSONDecodesAsNil() throws {
-        // Existing installs persisted before this field was introduced
-        // must continue to decode (nil override is the legacy behavior).
-        let json = #"{"configs":[],"activeConfigId":null}"#
-        let data = Data(json.utf8)
-        let decoded = try JSONDecoder().decode(ServerConfigList.self, from: data)
-        XCTAssertNil(decoded.manualOverrideConfigId)
+    func test_legacyManualOverride_ignoredWhenUnresolvableAndNotReEncoded() throws {
+        // A phantom legacy pin keeps the persisted activeConfigId, and the
+        // old key is never written back out.
+        let json = #"{"configs":[{"id":"a","url":"http://a","username":"u","password":"p"}],"activeConfigId":"a","manualOverrideConfigId":"ghost"}"#
+        let decoded = try JSONDecoder().decode(ServerConfigList.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.activeConfigId, "a")
+        let reencoded = String(data: try JSONEncoder().encode(decoded), encoding: .utf8)!
+        XCTAssertFalse(reencoded.contains("manualOverrideConfigId"),
+                       "the legacy key must not be re-encoded")
     }
 
     func test_serverConfig_normalizeSSID_stripsQuotesAndRejectsPlaceholders() {
@@ -260,21 +246,19 @@ final class FixturesTests: XCTestCase {
         XCTAssertNil(ServerConfig.normalizeSSID("0x"))
     }
 
-    func test_resolveActiveConfig_prefersNonDefaultMatchOverDefault() throws {
+    func test_suggestedSwitch_fromFixturePrefersNonDefaultMatch() throws {
         let data = try loadFixture("server_config_list")
         let list = try JSONDecoder().decode(ServerConfigList.self, from: data)
-        // Active is config #3 (no SSIDs). Connected to "Home-5G" → should pick config #1.
-        let resolved = list.resolveActiveConfig(currentSsid: "Home-5G")
-        XCTAssertEqual(resolved?.id, "0c1f2e3a-4b5c-6d7e-8f90-123456789abc")
+        // Active is config #3 (no SSIDs). Connected to "Home-5G" → suggest config #1.
+        let suggestion = list.suggestedSwitch(currentSsid: "Home-5G")
+        XCTAssertEqual(suggestion?.id, "0c1f2e3a-4b5c-6d7e-8f90-123456789abc")
     }
 
-    func test_resolveActiveConfig_returnsDefaultWhenSsidUnknown() throws {
+    func test_suggestedSwitch_fromFixtureNilWhenSsidUnknown() throws {
         let data = try loadFixture("server_config_list")
         let list = try JSONDecoder().decode(ServerConfigList.self, from: data)
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: nil)?.id,
-            "ff112233-4455-6677-8899-aabbccddeeff")
-        XCTAssertEqual(list.resolveActiveConfig(currentSsid: "<unknown ssid>")?.id,
-            "ff112233-4455-6677-8899-aabbccddeeff")
+        XCTAssertNil(list.suggestedSwitch(currentSsid: nil))
+        XCTAssertNil(list.suggestedSwitch(currentSsid: "<unknown ssid>"))
     }
 
     func test_legacyServerConfig_migrationProducesActiveSingleConfig() throws {

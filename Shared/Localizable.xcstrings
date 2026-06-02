@@ -573,17 +573,6 @@
         }
       }
     },
-    "切换服务器 · 已根据 WiFi 自动切换" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Server switched · auto-switched by Wi-Fi"
-          }
-        }
-      }
-    },
     "刚刚" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -842,17 +831,6 @@
         }
       }
     },
-    "在指定 WiFi 下自动启用此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Optionally activate this server on specific networks. You can change this later in Settings → Servers."
-          }
-        }
-      }
-    },
     "在系统设置中开启「位置」权限以读取当前 WiFi" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1050,17 +1028,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enable for LAN or self-signed certs. Applies to all servers."
-          }
-        }
-      }
-    },
-    "左滑可设为活动服务器或删除。自动切换：连接到匹配 SSID 时自动切换到该服务器。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Swipe left to set as active or delete. Auto-switch: this server is selected when you join a matching Wi-Fi network."
           }
         }
       }
@@ -2263,28 +2230,6 @@
         }
       }
     },
-    "自动切换" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto-switch"
-          }
-        }
-      }
-    },
-    "自动切换 WiFi" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto-switch on WiFi"
-          }
-        }
-      }
-    },
     "自动切换：连接到匹配 SSID 时自动切换到该服务器。" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2329,9 +2274,6 @@
         }
       }
     },
-    "解除当前固定,按规则自动选择服务器" : {
-
-    },
     "认证失败" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2361,17 +2303,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Authentication failed — check username and password"
-          }
-        }
-      }
-    },
-    "设为活动" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Set Active"
           }
         }
       }
@@ -2467,9 +2398,6 @@
     "读取分享内容失败: %@" : {
 
     },
-    "跟随 WiFi 自动切换" : {
-
-    },
     "跟随系统" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2521,17 +2449,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Connection"
-          }
-        }
-      }
-    },
-    "连接到这里的任一 SSID 时，会自动切换到该服务器。" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This server activates when you join any of these Wi-Fi networks."
           }
         }
       }
@@ -2631,6 +2548,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Default"
+          }
+        }
+      }
+    },
+    "当前 Wi-Fi「%@」匹配「%@」，切换?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current Wi-Fi \"%1$@\" matches \"%2$@\" — switch?"
+          }
+        }
+      }
+    },
+    "忽略" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ignore"
+          }
+        }
+      }
+    },
+    "切换" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch"
+          }
+        }
+      }
+    },
+    "设为当前服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set as Current Server"
+          }
+        }
+      }
+    },
+    "左滑可设为当前服务器或删除。WiFi 自动切换：连接到匹配 SSID 时会提示切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe to set as the current server or delete. Wi-Fi switching: you'll be prompted to switch to this server when you join a matching SSID."
+          }
+        }
+      }
+    },
+    "WiFi 切换提示" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wi-Fi Switch Prompt"
+          }
+        }
+      }
+    },
+    "连接到这里的任一 SSID 时，会提示切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You'll be prompted to switch to this server when you join any of these Wi-Fi networks."
+          }
+        }
+      }
+    },
+    "连接到指定 WiFi 时，提示切换到此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optionally get prompted to switch to this server when you join specific Wi-Fi networks. You can change this later in Settings → Servers."
           }
         }
       }

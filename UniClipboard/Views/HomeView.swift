@@ -59,13 +59,9 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     ServerChip(
-                        activeServer: vm.effectiveActiveConfig,
-                        defaultServerId: vm.servers.activeConfigId,
-                        isAutoSwitched: vm.isAutoSwitchOverridden,
-                        isManuallyPinned: vm.hasManualOverride,
+                        activeServer: vm.activeServer,
                         allServers: vm.servers.configs,
-                        onSelect: { id in vm.setManualServerOverride(id) },
-                        onClearPin: { vm.setManualServerOverride(nil) }
+                        onSelect: { id in vm.setActiveServer(id) }
                     )
                 }
                 if let issue = currentIssue {
@@ -237,7 +233,11 @@ struct HomeView: View {
                     detection: vm.appSettings.autoPushDeviceChanges ? nil : vm.pasteboardDetection,
                     onPaste: { providers in
                         Task { await vm.pushPastedProviders(providers) }
-                    }
+                    },
+                    wifiSuggestion: vm.wifiSwitchSuggestion,
+                    wifiSSID: ServerConfig.normalizeSSID(vm.ssidProvider.currentSSID) ?? "",
+                    onWifiSwitch: { vm.acceptWifiSwitch() },
+                    onWifiIgnore: { vm.dismissWifiSwitch() }
                 )
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -512,31 +512,103 @@ private struct SyncNudgeStack: View {
     /// auto-push, when the engine pushes on its own.
     let detection: PasteboardDetection?
     let onPaste: ([NSItemProvider]) -> Void
+    /// Non-nil ⇒ the current Wi-Fi matches a *different* server's
+    /// auto-switch rule. Surfaced as a one-tap switch nudge — the
+    /// demoted, never-silent replacement for the old auto-switch.
+    let wifiSuggestion: ServerConfig?
+    let wifiSSID: String
+    let onWifiSwitch: () -> Void
+    let onWifiIgnore: () -> Void
 
     var body: some View {
-        if showPending || detection != nil {
-            VStack(spacing: 0) {
-                if showPending {
-                    PendingRow(onApply: onApply)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+        if wifiSuggestion != nil || showPending || detection != nil {
+            VStack(spacing: 8) {
+                // Server-switch suggestion gets its own card: it's a
+                // different action (change server) from the content-sync
+                // pair below it, and it carries two buttons.
+                if let wifiSuggestion {
+                    WifiSwitchRow(
+                        ssid: wifiSSID,
+                        serverName: wifiSuggestion.displayLabel,
+                        onSwitch: onWifiSwitch,
+                        onIgnore: onWifiIgnore
+                    )
+                    .background(
+                        Color.accentColor.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                if showPending, detection != nil {
-                    Divider()
-                }
-                if let detection {
-                    PushRow(kind: detection.kind, onPaste: onPaste)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                if showPending || detection != nil {
+                    VStack(spacing: 0) {
+                        if showPending {
+                            PendingRow(onApply: onApply)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                        if showPending, detection != nil {
+                            Divider()
+                        }
+                        if let detection {
+                            PushRow(kind: detection.kind, onPaste: onPaste)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                    }
+                    .background(
+                        Color.accentColor.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
                 }
             }
-            .background(
-                Color.accentColor.opacity(0.12),
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 4)
             .transition(.move(edge: .top).combined(with: .opacity))
         }
+    }
+}
+
+/// Server-switch nudge: the current Wi-Fi matches a server other than the
+/// active one. Tapping 切换 makes it the current server (§5.2); 忽略 hides
+/// the nudge until the network changes. This is the demoted form of the
+/// old silent Wi-Fi auto-switch — it never changes servers on its own.
+private struct WifiSwitchRow: View {
+    let ssid: String
+    let serverName: String
+    let onSwitch: () -> Void
+    let onIgnore: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "wifi")
+                .font(.title3)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 8) {
+                // Localizable template: the two %@ (SSID, server name) are
+                // positional so translations can reorder them.
+                Text("当前 Wi-Fi「\(ssid)」匹配「\(serverName)」，切换?")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                    Button(action: onIgnore) {
+                        Text("忽略")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    Button(action: onSwitch) {
+                        Text("切换")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color(.systemBackground))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
 
@@ -811,23 +883,11 @@ private struct IssueDetailSheet: View {
 // MARK: - Top toolbar server chip
 
 private struct ServerChip: View {
-    /// Effective active server — what the sync engine is actually talking
-    /// to right now. May differ from the user's default when a Wi-Fi
-    /// auto-switch is in effect (§5.3).
+    /// The current server (§5.2) — the single "which server am I on"
+    /// concept. Picking a different one here writes `activeConfigId`.
     let activeServer: ServerConfig?
-    /// User-chosen default. Sheet rows annotate it with "默认" so the
-    /// override semantics stay legible.
-    let defaultServerId: String?
-    /// True iff `activeServer.id != defaultServerId`. Drives the small
-    /// wifi sub-icon on the chip.
-    let isAutoSwitched: Bool
-    /// True when the user has explicitly pinned a server via the chip.
-    /// Mutually exclusive with `isAutoSwitched` (the resolver returns the
-    /// pin before consulting SSID rules).
-    let isManuallyPinned: Bool
     let allServers: [ServerConfig]
     let onSelect: (String) -> Void
-    let onClearPin: () -> Void
 
     @State private var showingSwitcher: Bool =
         ProcessInfo.processInfo.environment["UC_OPEN_SWITCHER"] == "1"
@@ -837,21 +897,9 @@ private struct ServerChip: View {
         // SwiftUI's navigation bar squeezes the leading toolbar item to
         // ~30pt and truncates the alias Text to zero width.
         HStack(spacing: 6) {
-            if isManuallyPinned {
-                Image(systemName: "pin.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-            } else if isAutoSwitched {
-                Image(systemName: "wifi")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-            } else {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 6, height: 6)
-            }
+            Circle()
+                .fill(.green)
+                .frame(width: 6, height: 6)
             Text(verbatim: activeServer?.displayLabel ?? String(localized: "未配置"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
@@ -868,20 +916,14 @@ private struct ServerChip: View {
         .onTapGesture { showingSwitcher = true }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(Text(isAutoSwitched ? "切换服务器 · 已根据 WiFi 自动切换" : "切换服务器"))
+        .accessibilityLabel(Text("切换服务器"))
         .accessibilityValue(Text(activeServer?.displayLabel ?? String(localized: "未配置")))
         .sheet(isPresented: $showingSwitcher) {
             ServerSwitcherSheet(
                 activeId: activeServer?.id,
-                defaultId: defaultServerId,
-                isManuallyPinned: isManuallyPinned,
                 servers: allServers,
                 onSelect: { id in
                     onSelect(id)
-                    showingSwitcher = false
-                },
-                onClearPin: {
-                    onClearPin()
                     showingSwitcher = false
                 }
             )
@@ -893,41 +935,12 @@ private struct ServerChip: View {
 
 private struct ServerSwitcherSheet: View {
     let activeId: String?
-    let defaultId: String?
-    /// When true, render the "跟随 WiFi 自动切换" release row so the user
-    /// can drop the manual pin without having to re-tap the previously
-    /// active server (which they may not even remember was the default).
-    let isManuallyPinned: Bool
     let servers: [ServerConfig]
     let onSelect: (String) -> Void
-    let onClearPin: () -> Void
 
     var body: some View {
         NavigationStack {
             List {
-                if isManuallyPinned {
-                    Section {
-                        Button(action: onClearPin) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "wifi")
-                                    .font(.title3)
-                                    .foregroundStyle(.tint)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("跟随 WiFi 自动切换")
-                                        .font(.callout.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text("解除当前固定,按规则自动选择服务器")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 4)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
                 Section {
                     ForEach(servers) { server in
                         Button {
@@ -935,8 +948,7 @@ private struct ServerSwitcherSheet: View {
                         } label: {
                             ServerSwitcherRow(
                                 server: server,
-                                isActive: server.id == activeId,
-                                isDefault: server.id == defaultId
+                                isActive: server.id == activeId
                             )
                         }
                         .buttonStyle(.plain)
@@ -958,7 +970,6 @@ private struct ServerSwitcherSheet: View {
 private struct ServerSwitcherRow: View {
     let server: ServerConfig
     let isActive: Bool
-    let isDefault: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -968,22 +979,9 @@ private struct ServerSwitcherRow: View {
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(server.displayLabel)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    if isDefault && !isActive {
-                        // Auto-switch swapped the active away from this
-                        // user-default; surface the override so they
-                        // don't think the chip picked the wrong row.
-                        Text("默认")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.secondary.opacity(0.15), in: Capsule())
-                    }
-                }
+                Text(server.displayLabel)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
                 Text(server.url)
                     .font(.caption)
                     .foregroundStyle(.secondary)

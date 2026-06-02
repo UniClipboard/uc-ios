@@ -15,12 +15,6 @@ final class AppViewModel {
         didSet {
             store.saveServers(servers)
             engine?.handleServersChange(from: oldValue, to: servers)
-            // Keep the SSID-change baseline aligned with the new
-            // effective config — otherwise the next SSID notification
-            // would compare against a now-stale id and re-trigger a
-            // reset the engine already handled.
-            lastObservedEffectiveActiveId =
-                servers.resolveActiveConfig(currentSsid: ssidProvider.currentSSID)?.id
         }
     }
 
@@ -171,81 +165,78 @@ final class AppViewModel {
         self.historyWatermark = store.loadHistoryWatermark()
         self.ssidProvider = CurrentSSIDProvider()
         self.engine = SyncEngine(viewModel: self, store: store)
-        // Seed the snapshot off the cold-launch SSID so the first
-        // legitimate roaming flip is detected as a change, but a
-        // notification that fires with the same effective server (the
-        // common case for non-auto-switch users) is a no-op.
-        self.lastObservedEffectiveActiveId =
-            self.servers.resolveActiveConfig(currentSsid: self.ssidProvider.currentSSID)?.id
-        // Drive engine state resets when a Wi-Fi flip changes the
-        // effective server (§5.3). Captured weakly because the provider
+        // A Wi-Fi flip no longer changes the active server on its own — it
+        // only offers a one-tap switch nudge (see `wifiSwitchSuggestion`).
+        // On SSID change we just drop any per-network "ignore" so the new
+        // network re-evaluates. Captured weakly because the provider
         // outlives the engine reference inside `self`.
         self.ssidProvider.onSSIDChanged = { [weak self] _ in
             self?.handleSSIDChanged()
         }
     }
 
-    /// Effective active server per §5.3 — auto-switches to a configured
-    /// server when the current SSID matches its `autoSwitchWifiNames`,
-    /// falling back to the user-chosen default (`activeConfigId`) when
-    /// no SSID match exists or Wi-Fi info is unavailable.
-    var effectiveActiveConfig: ServerConfig? {
-        servers.resolveActiveConfig(currentSsid: ssidProvider.currentSSID)
+    /// The current server — the single "which server am I using" concept
+    /// (§5.2). Picking a server from the home chip or Settings, and
+    /// accepting a Wi-Fi switch nudge, all write `activeConfigId`; this is
+    /// the resolved value with the §5.2 stale-id fallback.
+    var activeServer: ServerConfig? {
+        servers.activeConfig
     }
 
-    /// Whether the effective server differs from the user-chosen default —
-    /// i.e., the current SSID forced an auto-switch override. Views use
-    /// this to surface a badge so the difference doesn't feel like a bug.
-    /// Manual chip pins don't count: they're the user's own choice, not
-    /// something to apologize for.
-    var isAutoSwitchOverridden: Bool {
-        if servers.manualOverrideConfigId != nil { return false }
-        guard let effective = effectiveActiveConfig,
-              let default_ = servers.activeConfig else { return false }
-        return effective.id != default_.id
+    /// A different server whose `autoSwitchWifiNames` matches the current
+    /// Wi-Fi, surfaced as a one-tap switch nudge — unless the user already
+    /// dismissed this exact (SSID, server) pairing on this network. `nil`
+    /// means "no nudge". See `suggestedSwitch` for the matching rules.
+    var wifiSwitchSuggestion: ServerConfig? {
+        let ssid = ssidProvider.currentSSID
+        guard let candidate = servers.suggestedSwitch(currentSsid: ssid) else { return nil }
+        if let dismissed = dismissedWifiSuggestion,
+           dismissed.ssid == ServerConfig.normalizeSSID(ssid),
+           dismissed.id == candidate.id {
+            return nil
+        }
+        return candidate
     }
 
-    /// True when `manualOverrideConfigId` is set AND it resolves to a
-    /// real config. Views use this to show "已固定" affordance + the
-    /// "跟随 WiFi 自动切换" release action.
-    var hasManualOverride: Bool {
-        guard let id = servers.manualOverrideConfigId else { return false }
-        return servers.configs.contains(where: { $0.id == id })
-    }
+    /// Remembers a dismissed Wi-Fi switch suggestion so it doesn't re-nag
+    /// while the user stays on the same network. Keyed by normalized SSID +
+    /// suggested config id; cleared on every SSID change.
+    private var dismissedWifiSuggestion: (ssid: String?, id: String)?
 
-    /// Set the manual override to `id` (or clear it if `nil`). Called by
-    /// the home-screen chip switcher. Going through the view-model keeps
-    /// the persistence + engine-restart side effects centralized — the
-    /// existing `servers.didSet` already fires `engine?.handleServersChange`
-    /// which compares effective IDs and resets per-server runtime state
-    /// (last-synced hash, history watermark) when the effective server
-    /// flips. We don't need a separate path.
-    func setManualServerOverride(_ id: String?) {
+    /// Set the current server to `id`. Called by the home chip switcher,
+    /// Settings, and the Wi-Fi switch nudge — one path for all three.
+    /// Going through the view-model keeps persistence + engine-restart
+    /// centralized: `servers.didSet` fires `engine?.handleServersChange`,
+    /// which compares active IDs and resets per-server runtime state
+    /// (last-synced hash, history watermark) when the server flips.
+    func setActiveServer(_ id: String) {
         var list = servers
-        list.manualOverrideConfigId = id
+        list.activeConfigId = id
         servers = list
     }
 
-    /// Hook fired by `CurrentSSIDProvider.onSSIDChanged`. Resets engine
-    /// runtime state only if the effective server changed — otherwise a
-    /// roaming network blip would discard a perfectly good cached hash.
-    ///
-    /// The provider invokes this AFTER it has already mutated
-    /// `currentSSID`, so we can't compute the "before" effective config
-    /// in here. We track `lastObservedEffectiveActiveId` ourselves and
-    /// compare against the freshly-resolved one. Initialized in `init`
-    /// off the cold-launch SSID so the first roaming flip after launch
-    /// doesn't always wipe the cache.
-    private func handleSSIDChanged() {
-        let new = effectiveActiveConfig?.id
-        let old = lastObservedEffectiveActiveId
-        lastObservedEffectiveActiveId = new
-        guard old != new else { return }
-        engine?.handleEffectiveActiveChange()
+    /// Accept the pending Wi-Fi switch suggestion (makes it the current
+    /// server). No-op if there's nothing suggested right now.
+    func acceptWifiSwitch() {
+        guard let candidate = wifiSwitchSuggestion else { return }
+        setActiveServer(candidate.id)
     }
 
-    @ObservationIgnored
-    private var lastObservedEffectiveActiveId: String?
+    /// Dismiss the pending Wi-Fi switch suggestion for this network. It
+    /// won't reappear until the SSID changes (or the same server matches a
+    /// different network).
+    func dismissWifiSwitch() {
+        guard let candidate = servers.suggestedSwitch(currentSsid: ssidProvider.currentSSID) else { return }
+        dismissedWifiSuggestion = (ServerConfig.normalizeSSID(ssidProvider.currentSSID), candidate.id)
+    }
+
+    /// Hook fired by `CurrentSSIDProvider.onSSIDChanged`. The active server
+    /// no longer follows the SSID, so there's no engine state to reset
+    /// here — we only drop the per-network "ignore" so the freshly-joined
+    /// network re-evaluates `wifiSwitchSuggestion` from scratch.
+    private func handleSSIDChanged() {
+        dismissedWifiSuggestion = nil
+    }
 
     /// Entry point for `.onOpenURL`. Parses the incoming URL as a
     /// `uniclipboard://connect?…` URI; on success stages the payload in
@@ -302,13 +293,11 @@ final class AppViewModel {
             autoSwitchWifiNames: []
         )
         list.configs.append(config)
+        // The user just expressed intent to use this new server — make it
+        // the current one. A pre-existing autoSwitchWifiNames rule on
+        // another server can only *suggest* a switch now, never silently
+        // take over, so there's nothing to guard against here.
         list.activeConfigId = config.id
-        // The user just expressed intent to use this new server — pin it
-        // via manual override so a pre-existing autoSwitchWifiNames rule
-        // on another server doesn't immediately swap it back out under
-        // the new owner. They can release via the switcher's "跟随 WiFi"
-        // row when they realize they want roaming back.
-        list.manualOverrideConfigId = config.id
         servers = list
         pendingImport = nil
     }
@@ -491,7 +480,7 @@ final class AppViewModel {
                 return true
             }
             guard !isApplying else { return false }
-            guard let server = effectiveActiveConfig, let dataName = entry.dataName else { return false }
+            guard let server = activeServer, let dataName = entry.dataName else { return false }
             isApplying = true
             defer { isApplying = false }
             do {
@@ -513,7 +502,7 @@ final class AppViewModel {
         case .image:
             guard entry.hasData,
                   let dataName = entry.dataName,
-                  let server = effectiveActiveConfig
+                  let server = activeServer
             else { return false }
             guard !isApplying else { return false }
             isApplying = true
@@ -555,7 +544,7 @@ final class AppViewModel {
               entry.type == .image,
               let dataName = entry.dataName,
               let hash = entry.hash, !hash.isEmpty,
-              let server = effectiveActiveConfig
+              let server = activeServer
         else { return }
         let profileId = HistoryRecord.profileId(type: entry.type, hash: hash)
 
@@ -595,7 +584,7 @@ final class AppViewModel {
         guard entry.hasData, let dataName = entry.dataName else {
             throw SyncError(kind: .notFound, underlying: "entry has no payload")
         }
-        guard let server = effectiveActiveConfig else {
+        guard let server = activeServer else {
             throw SyncError(kind: .invalidURL, underlying: "no active server")
         }
         let client = try SyncClipboardClient(server: server, trustInsecureCert: appSettings.trustInsecureCert)
@@ -628,7 +617,7 @@ final class AppViewModel {
         guard entry.hasData,
               entry.type == .image || entry.type == .file,
               let dataName = entry.dataName,
-              let server = effectiveActiveConfig
+              let server = activeServer
         else { return }
         // §2.11 addresses by `<type>-<hash>`. Without a hash there's no
         // record to fetch; the live-latest path (`saveServerAttachment`)
@@ -665,7 +654,7 @@ final class AppViewModel {
               entry.hasData,
               entry.type == .image || entry.type == .file,
               let dataName = entry.dataName,
-              let server = effectiveActiveConfig
+              let server = activeServer
         else { return }
         isSaving = true
         defer { isSaving = false }
@@ -738,7 +727,7 @@ final class AppViewModel {
               entry.type == .image || entry.type == .text,
               let hash = entry.hash, !hash.isEmpty,
               let dataName = entry.dataName,
-              let server = effectiveActiveConfig
+              let server = activeServer
         else { return }
         let trust = appSettings.trustInsecureCert
         let profileId = HistoryRecord.profileId(type: entry.type, hash: hash)
@@ -884,7 +873,7 @@ extension AppViewModel {
         // Guard server + in-flight BEFORE snapshotting — `pasteboard.snapshot()`
         // reads content and can fire the "Allow Paste" prompt, so we don't
         // want it firing when there's nothing to push to.
-        guard !isPushing, effectiveActiveConfig != nil else { return nil }
+        guard !isPushing, activeServer != nil else { return nil }
         guard let snapshot = pasteboard.snapshot(),
               snapshot.clipboard.type == .text || snapshot.clipboard.type == .image
         else { return nil }
@@ -901,7 +890,7 @@ extension AppViewModel {
     @discardableResult
     func pushSnapshot(_ snapshot: DeviceClipboardSnapshot) async throws -> Clipboard? {
         guard !isPushing else { return nil }
-        guard let server = effectiveActiveConfig else { return nil }
+        guard let server = activeServer else { return nil }
         guard snapshot.clipboard.type == .text || snapshot.clipboard.type == .image
         else { return nil }
         isPushing = true
@@ -941,7 +930,7 @@ extension AppViewModel {
     ///   and surface via `refreshError`.
     /// - No active config → spec §5.2 forbids the call; returns silently.
     func refresh() async {
-        guard let server = effectiveActiveConfig else { return }
+        guard let server = activeServer else { return }
         if isRefreshing { return }
         isRefreshing = true
         defer { isRefreshing = false }

@@ -79,49 +79,43 @@ public struct ServerConfigList: Codable, Equatable, Hashable, Sendable {
     public var configs: [ServerConfig]
     public var activeConfigId: String?
 
-    /// User's explicit pin from the home-screen server chip. When non-nil
-    /// and resolvable to an existing config, this wins over both the
-    /// user's `activeConfigId` default AND the §5.3 SSID auto-switch
-    /// rules. Cleared when the user picks the "自动切换" affordance in
-    /// the switcher sheet, when the pinned server is deleted, or when
-    /// the user edits the default in Settings (treated as a fresh
-    /// intent that should release the pin).
-    ///
-    /// Why a separate field instead of just respecting `activeConfigId`:
-    /// the WiFi auto-switch feature is the whole reason for §5.3 — users
-    /// who set `autoSwitchWifiNames` *want* their non-default server to
-    /// take over on its LAN. So `activeConfigId` continues to mean "my
-    /// fallback when no SSID rule matches", and `manualOverrideConfigId`
-    /// is the "no, actually, I picked this one — stop second-guessing me"
-    /// override.
-    public var manualOverrideConfigId: String?
-
     public init(
         configs: [ServerConfig] = [],
-        activeConfigId: String? = nil,
-        manualOverrideConfigId: String? = nil
+        activeConfigId: String? = nil
     ) {
         self.configs = configs
         self.activeConfigId = activeConfigId
-        self.manualOverrideConfigId = manualOverrideConfigId
     }
 
     private enum CodingKeys: String, CodingKey {
+        // `manualOverrideConfigId` is decode-only: a pre-unification key we
+        // migrate away from (see init(from:)) and never re-encode.
         case configs, activeConfigId, manualOverrideConfigId
     }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         configs = try c.decodeIfPresent([ServerConfig].self, forKey: .configs) ?? []
-        activeConfigId = try c.decodeIfPresent(String.self, forKey: .activeConfigId)
-        manualOverrideConfigId = try c.decodeIfPresent(String.self, forKey: .manualOverrideConfigId)
+        let decodedActive = try c.decodeIfPresent(String.self, forKey: .activeConfigId)
+        // One-shot migration: pre-unification builds persisted a home-chip
+        // "pin" in `manualOverrideConfigId` that out-prioritized
+        // `activeConfigId`. The pin concept is gone — the user's last
+        // explicit pick IS the current server now — so promote a resolvable
+        // legacy pin into `activeConfigId` and never re-encode the old key
+        // (see encode(to:)). Absent/unresolvable → fall back to the
+        // persisted `activeConfigId`.
+        let legacyPin = try c.decodeIfPresent(String.self, forKey: .manualOverrideConfigId)
+        if let pin = legacyPin, configs.contains(where: { $0.id == pin }) {
+            activeConfigId = pin
+        } else {
+            activeConfigId = decodedActive
+        }
     }
 
     public func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(configs, forKey: .configs)
         try c.encodeIfPresent(activeConfigId, forKey: .activeConfigId)
-        try c.encodeIfPresent(manualOverrideConfigId, forKey: .manualOverrideConfigId)
     }
 
     /// §5.2 — stale activeConfigId falls back to configs[0]; nil iff configs is empty.
@@ -131,33 +125,24 @@ public struct ServerConfigList: Codable, Equatable, Hashable, Sendable {
         return configs.first
     }
 
-    /// Resolves the effective server. Precedence:
-    /// 1. `manualOverrideConfigId` — the user's explicit chip pin.
-    /// 2. The default server when it ITSELF has a matching SSID rule
-    ///    (covers the case where multiple servers share a SSID — the
-    ///    default wins to avoid silently re-routing the user's chosen
-    ///    server to one they merely added on the same network).
-    /// 3. §5.3 SSID auto-switch — first non-default config matching the
-    ///    current Wi-Fi, in `configs` array order. Two non-default
-    ///    servers sharing a SSID is a configuration accident; the
-    ///    deterministic-but-implicit "first wins" stays for now.
-    /// 4. `activeConfig` — the user's persisted default (with §5.2 fallback).
-    public func resolveActiveConfig(currentSsid: String?) -> ServerConfig? {
-        if let id = manualOverrideConfigId,
-           let pinned = configs.first(where: { $0.id == id }) {
-            return pinned
-        }
-        guard let defaultCfg = activeConfig else { return nil }
-        guard Self.normalizeNonNilSSID(currentSsid) != nil else { return defaultCfg }
-        if defaultCfg.matchesWifiName(currentSsid) { return defaultCfg }
-        for cfg in configs where cfg.id != defaultCfg.id {
+    /// §5.3 — the server we'd *suggest* switching to for the current Wi-Fi,
+    /// or `nil` if there's nothing worth suggesting. The active server is
+    /// always `activeConfig` (§5.2); `autoSwitchWifiNames` no longer
+    /// silently re-routes it — it only drives a one-tap UI nudge. Returns:
+    /// - `nil` when the SSID is unknown/empty (no basis to suggest).
+    /// - `nil` when the current `activeConfig` itself matches the SSID
+    ///   (already on the right server — nothing to suggest).
+    /// - otherwise the first OTHER config matching the SSID, in `configs`
+    ///   array order. Two configs sharing a SSID is a config accident; the
+    ///   deterministic "first wins" stays.
+    public func suggestedSwitch(currentSsid: String?) -> ServerConfig? {
+        guard ServerConfig.normalizeSSID(currentSsid) != nil else { return nil }
+        let current = activeConfig
+        if let current, current.matchesWifiName(currentSsid) { return nil }
+        for cfg in configs where cfg.id != current?.id {
             if cfg.matchesWifiName(currentSsid) { return cfg }
         }
-        return defaultCfg
-    }
-
-    private static func normalizeNonNilSSID(_ ssid: String?) -> String? {
-        ServerConfig.normalizeSSID(ssid)
+        return nil
     }
 }
 

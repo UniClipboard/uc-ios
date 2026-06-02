@@ -199,13 +199,8 @@ private struct ServersListView: View {
                             if server.id != servers.activeConfigId {
                                 Button {
                                     servers.activeConfigId = server.id
-                                    // Reconfiguring the default is a fresh
-                                    // intent — drop any home-chip pin so
-                                    // the new default actually takes effect
-                                    // (otherwise the pin keeps winning).
-                                    servers.manualOverrideConfigId = nil
                                 } label: {
-                                    Label("设为活动", systemImage: "checkmark.circle")
+                                    Label("设为当前服务器", systemImage: "checkmark.circle")
                                 }
                                 .tint(.green)
                             }
@@ -213,7 +208,7 @@ private struct ServersListView: View {
                     }
                 }
             } footer: {
-                Text("左滑可设为活动服务器或删除。自动切换：连接到匹配 SSID 时自动切换到该服务器。")
+                Text("左滑可设为当前服务器或删除。WiFi 自动切换：连接到匹配 SSID 时会提示切换到该服务器。")
                     .font(.caption)
             }
 
@@ -302,19 +297,12 @@ private struct ServersListView: View {
 
     private func delete(server: ServerConfig) {
         let wasActive = (server.id == servers.activeConfigId)
-        let wasPinned = (server.id == servers.manualOverrideConfigId)
         servers.configs.removeAll { $0.id == server.id }
         if wasActive {
             // §5.2 — activeConfig already falls back to configs[0], but
             // pin the id so the persisted state is in sync with what the
             // UI shows.
             servers.activeConfigId = servers.configs.first?.id
-        }
-        if wasPinned {
-            // Don't leave a dangling override id around — `resolveActiveConfig`
-            // already guards on existence, but persisting a phantom id is
-            // sloppy and would re-engage if the same id ever re-appeared.
-            servers.manualOverrideConfigId = nil
         }
         // Drop any Sharing-Suggestions tiles the system is showing for
         // this server. Without this, iOS would keep suggesting a dead
@@ -635,9 +623,9 @@ private struct SSIDEditorSection: View {
                 }
             }
         } header: {
-            Text("自动切换")
+            Text("WiFi 切换提示")
         } footer: {
-            Text("连接到这里的任一 SSID 时，会自动切换到该服务器。")
+            Text("连接到这里的任一 SSID 时，会提示切换到该服务器。")
                 .font(.caption)
         }
         .task {

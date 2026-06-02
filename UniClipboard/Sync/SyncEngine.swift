@@ -292,14 +292,14 @@ final class SyncEngine {
 
     /// Called by `AppViewModel.servers.didSet`. Decides whether to clear
     /// per-server state and / or restart a paused (.authFailed) loop.
-    /// Compares effective (SSID-resolved) configs because an SSID-list
-    /// edit on a non-active server can flip the effective active without
-    /// touching `activeConfigId`.
+    /// Compares the active config (§5.2) — the single source of "which
+    /// server am I on". The SSID no longer participates: Wi-Fi rules only
+    /// drive a switch *suggestion*, and accepting one writes `activeConfigId`
+    /// (which flows right back through here).
     func handleServersChange(from old: ServerConfigList, to new: ServerConfigList) {
-        let ssid = viewModel?.ssidProvider.currentSSID
-        let oldEffectiveId = old.resolveActiveConfig(currentSsid: ssid)?.id
-        let newEffectiveId = new.resolveActiveConfig(currentSsid: ssid)?.id
-        if oldEffectiveId != newEffectiveId {
+        let oldActiveId = old.activeConfig?.id
+        let newActiveId = new.activeConfig?.id
+        if oldActiveId != newActiveId {
             // Different server entirely — content timeline differs, drop hash.
             // `resetRuntimeState` also clears `.loopDetected`, so we then need
             // to restart the loop unconditionally (it was stopped when the
@@ -310,40 +310,16 @@ final class SyncEngine {
             // §2.7 watermark is per-server too — clear it so the next
             // tick pulls the new server's full history page by page.
             viewModel?.historyWatermark = nil
+            // A fresh server is also worth surfacing immediately rather than
+            // waiting out the 1 Hz cadence, so force a tick once restarted.
             start()
+            forceTickNow()
         }
         if state == .authFailed {
             // The user almost certainly just edited credentials. Restart and
             // see whether the new ones work; if not we'll land back in
             // .authFailed within one tick.
             start()
-        }
-    }
-
-    /// Called when the effective active server changed due to a Wi-Fi
-    /// flip (not a config edit). Drops per-server runtime state and
-    /// forces an immediate tick so the new server's clipboard surfaces
-    /// without waiting for the 1Hz cadence.
-    func handleEffectiveActiveChange() {
-        // §5.3: switching servers is a content-timeline change. Drop the
-        // staged + last-synced hashes so the new server's first entry
-        // isn't mistaken for a duplicate.
-        resetRuntimeState()
-        lastSyncedContentHash = nil
-        store.saveLastSyncedHash(nil)
-        // §2.7 watermark is per-server. Also clear it so the new server's
-        // first history pull is unfiltered.
-        viewModel?.historyWatermark = nil
-        // Restart the loop unconditionally — `resetRuntimeState` already
-        // cleared `.loopDetected`, and `start()` is a no-op if the loop is
-        // already running. `forceTickNow` alone wouldn't be enough: when
-        // the breaker had tripped the loopTask is nil, so we need start()
-        // to revive the cadence.
-        if state == .authFailed {
-            start()
-        } else {
-            start()
-            forceTickNow()
         }
     }
 
@@ -401,7 +377,7 @@ final class SyncEngine {
             if explicit { isExplicitlyRefreshing = false }
         }
         guard let vm = viewModel,
-              let server = vm.effectiveActiveConfig else {
+              let server = vm.activeServer else {
             state = .idle
             return
         }
@@ -669,7 +645,7 @@ final class SyncEngine {
     /// surfaces them. Runs regardless of `autoPushDeviceChanges` — it's the
     /// default push path, not gated by the auto-push opt-in.
     func consentPush(_ snapshot: DeviceClipboardSnapshot) async {
-        guard let vm = viewModel, let server = vm.effectiveActiveConfig else { return }
+        guard let vm = viewModel, let server = vm.activeServer else { return }
         if state == .authFailed || state == .loopDetected { return }
         do {
             guard let entry = try await vm.pushSnapshot(snapshot) else { return }

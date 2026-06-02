@@ -154,9 +154,10 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
-                // Refresh SSID before the engine reads `effectiveActiveConfig`
-                // so a Wi-Fi flip while the app was backgrounded surfaces
-                // on the first foreground tick instead of one cycle later.
+                // Refresh SSID on foreground so a Wi-Fi flip that happened
+                // while backgrounded re-evaluates `wifiSwitchSuggestion`
+                // right away instead of waiting for the next NWPathMonitor
+                // callback.
                 vm.ssidProvider.refresh()
                 vm.engine.isSceneInactive = false
                 vm.engine.start()

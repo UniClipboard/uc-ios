@@ -514,7 +514,7 @@ private struct AutoSwitchStepView: View {
     var body: some View {
         Form {
             Section {
-                Text("在指定 WiFi 下自动启用此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。")
+                Text("连接到指定 WiFi 时，提示切换到此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineSpacing(2)
@@ -567,7 +567,7 @@ private struct AutoSwitchStepView: View {
                 .listRowSeparator(.hidden)
             }
         }
-        .navigationTitle("自动切换 WiFi")
+        .navigationTitle("WiFi 切换提示")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             ssidProvider.refresh()

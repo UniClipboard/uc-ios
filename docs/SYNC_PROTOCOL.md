@@ -644,26 +644,36 @@ identically before comparison:
 
 If `activeConfigId` is set but no config in `configs` has that id, the client
 falls back to `configs[0]`. If `configs` is empty, there is no active config
-and the client MUST refuse to make network calls.
+and the client MUST refuse to make network calls. `activeConfigId` is the
+**single source of "which server am I using"** — there is no separate
+override/pin concept.
 
-### 5.3 Auto-switch resolution algorithm
+**Migration note.** Pre-unification iOS builds persisted a home-screen "pin"
+in a client-private `manualOverrideConfigId` key that out-prioritized
+`activeConfigId`. That key was never part of this spec. On read, a client MUST
+promote a resolvable `manualOverrideConfigId` into `activeConfigId` (the user's
+last explicit pick becomes the current server) and MUST NOT re-encode the key.
+An absent or unresolvable value is ignored.
+
+### 5.3 SSID-based switch suggestion
+
+The active server is **always** `activeConfig` (§5.2). `autoSwitchWifiNames`
+does NOT silently re-route it — it only drives a one-tap, client-side *switch
+suggestion*. When the suggestion is accepted, the client sets `activeConfigId`
+to the suggested config (flowing through the normal §5.2 path); when ignored,
+nothing changes. A client without UI for the suggestion simply stays on
+`activeConfig`.
 
 ```
-def getActiveConfig(list, currentSsid):
-    if list.configs is empty: return None
-    default_cfg = first config whose id == list.activeConfigId,
-                  else list.configs[0]
-
-    if currentSsid is None:                    # WiFi unknown / off / no perm
-        return default_cfg
-
-    # Prefer a non-default config that matches the SSID
-    for cfg in list.configs:
-        if cfg.id == default_cfg.id: continue
+def suggestedSwitch(list, currentSsid):           # the server to *suggest*, or None
+    if currentSsid is None: return None           # WiFi unknown / off / no perm
+    current = getActiveConfig(list)               # §5.2 (activeConfigId + fallback)
+    if current and current.matchesWifiName(currentSsid):
+        return None                               # already on a server that fits
+    for cfg in list.configs:                      # first OTHER config matching the SSID
+        if cfg.id == current.id: continue
         if cfg.matchesWifiName(currentSsid): return cfg
-
-    # Otherwise, the default wins (whether or not it matches the SSID)
-    return default_cfg
+    return None
 ```
 
 `cfg.matchesWifiName(ssid)` returns `true` iff the normalized `ssid` is
