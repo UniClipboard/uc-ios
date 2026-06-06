@@ -238,6 +238,53 @@ public final class SettingsStore: @unchecked Sendable {
         defaults.set(data, forKey: AppSettings.PersistenceKey.clipboardHistory)
     }
 
+    /// Append one observation to the shared history log (App Group),
+    /// newest-first, deduped against the most-recent same-direction+hash
+    /// entry, and capped. Mirrors `AppViewModel.appendHistory` so an
+    /// extension (keyboard / share) that pushes or applies content while the
+    /// main app is suspended still lands a row the user will see — the app
+    /// reconciles the on-disk log on its next foreground.
+    ///
+    /// Process-safety is load-modify-save (last writer wins). Only one
+    /// extension runs at a time and the host app is suspended while a
+    /// keyboard runs in another app, so concurrent writers are not a
+    /// practical concern on iPhone; the app's foreground merge covers the
+    /// iPad-multitasking edge.
+    public func appendHistory(
+        entry: Clipboard,
+        direction: ClipboardHistoryItem.Direction,
+        at timestamp: Date = Date(),
+        cap: Int = 200
+    ) {
+        var items = loadHistory()
+        if let hash = entry.hash,
+           let last = items.first,
+           last.direction == direction,
+           last.entry.hash == hash {
+            return
+        }
+        items.insert(
+            ClipboardHistoryItem(entry: entry, timestamp: timestamp, direction: direction),
+            at: 0
+        )
+        if items.count > cap { items = Array(items.prefix(cap)) }
+        saveHistory(items)
+    }
+
+    // MARK: - Pasteboard change-count watermark (keyboard uplink)
+
+    /// The `UIPasteboard.changeCount` the keyboard last synced. Lets the
+    /// keyboard's uplink skip the *content* read (which fires iOS's
+    /// "允许粘贴" prompt) when nothing has been copied since — reading
+    /// `changeCount` itself is free and never prompts. `nil` on cold start.
+    public func loadLastSyncedChangeCount() -> Int? {
+        defaults.object(forKey: AppSettings.PersistenceKey.lastSyncedChangeCount) as? Int
+    }
+
+    public func saveLastSyncedChangeCount(_ value: Int) {
+        defaults.set(value, forKey: AppSettings.PersistenceKey.lastSyncedChangeCount)
+    }
+
     /// Load the incremental-sync watermark (the largest `lastModified`
     /// seen on any prior §2.7 page). Returns `nil` on cold launch or if
     /// the stored string fails to parse — both are treated as "fetch

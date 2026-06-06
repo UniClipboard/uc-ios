@@ -174,5 +174,9 @@ public extension AppSettings {
         /// open. ISO-8601 string for `defaults read` debuggability,
         /// matching `historyModifiedAfter`.
         public static let lastHistorySyncAt = "last_history_sync_at"
+        /// The `UIPasteboard.changeCount` the keyboard extension last synced.
+        /// Lets the keyboard's uplink skip the prompting content read when
+        /// nothing new has been copied since. Not a user setting.
+        public static let lastSyncedChangeCount = "last_synced_change_count"
     }
 }

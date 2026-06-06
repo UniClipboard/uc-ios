@@ -43,6 +43,12 @@ struct ShareUploader {
         }
         try await client.putClipboard(entry)
 
+        // Surface the push in the shared history log so it shows up in the
+        // main app's Home list. The app's SyncEngine won't log it on its own —
+        // it sees the watermark we just wrote and treats the server entry as
+        // already synced (skipping its own appendHistory).
+        store.appendHistory(entry: entry, direction: .pushed)
+
         // Tell iOS Sharing Suggestions "the user just sent this to this
         // server" so next time the share sheet ranks the server's
         // contact tile higher. Best-effort: failures are swallowed inside.

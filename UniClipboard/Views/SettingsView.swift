@@ -66,6 +66,17 @@ struct SettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    KeyboardSetupView()
+                } label: {
+                    Label("键盘与自动同步", systemImage: "keyboard")
+                }
+            } footer: {
+                Text("用 UniClip 键盘在任意 App 里打开即自动同步剪贴板；并可在此授权「粘贴自其他 App」。")
+                    .font(.caption)
+            }
+
+            Section {
                 Toggle(isOn: $vm.appSettings.autoCheckUpdate) {
                     Label("启动时检查更新", systemImage: "arrow.triangle.2.circlepath")
                 }

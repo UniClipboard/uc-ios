@@ -38,6 +38,23 @@
         }
       }
     },
+    "「允许完全访问」位于 设置 › 通用 › 键盘 › UniClip。系统未提供直达该页的链接,可从上方系统设置页逐级进入。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Allow Full Access” lives in Settings › General › Keyboard › UniClip. iOS offers no direct link there — navigate from the Settings page above."
+          }
+        }
+      }
+    },
+    "%@" : {
+
+    },
+    "%lld" : {
+
+    },
     "%lld 个" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -90,6 +107,17 @@
       "extractionState" : "manual",
       "shouldTranslate" : false
     },
+    "iOS 默认对来自其他 App 的剪贴板逐条询问——这就是每复制一条新内容、首次读取时都会弹「允许粘贴」的原因。把 设置 › UniClip › 粘贴自其他 App 设为「允许」即可完全静默(该开关在首次弹窗后才出现)。授权按 App 独立:键盘扩展可能需要在键盘内单独授权,且部分系统版本不为键盘提供该开关。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By default iOS asks for each clipboard item copied from another app — that's why a newly-copied item triggers “Allow Paste” the first time it's read. Set Settings › UniClip › Paste from Other Apps to Allow to silence it entirely (the switch appears only after the first prompt). Authorization is per app: the keyboard extension may need its own grant from inside the keyboard, and some iOS versions don't expose the switch for keyboards."
+          }
+        }
+      }
+    },
     "Pulled clipboard from server (%lld min ago)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -106,6 +134,9 @@
           }
         }
       }
+    },
+    "UniClip" : {
+
     },
     "URL" : {
       "extractionState" : "manual",
@@ -144,6 +175,17 @@
         }
       }
     },
+    "下一项" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next"
+          }
+        }
+      }
+    },
     "下载子目录" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -177,6 +219,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Theme"
+          }
+        }
+      }
+    },
+    "了解「允许粘贴」提示" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About the “Allow Paste” prompt"
           }
         }
       }
@@ -268,6 +321,12 @@
           }
         }
       }
+    },
+    "从 ${server} 接收" : {
+
+    },
+    "从 UniClipboard 服务器拉取最新内容并作为快捷指令的输出返回;默认同时写入本机剪贴板。可指定来源服务器。" : {
+
     },
     "从 UniClipboard 服务器拉取最新的剪贴板内容,写入到本机剪贴板。" : {
       "extractionState" : "manual",
@@ -402,6 +461,28 @@
         }
       }
     },
+    "允许完全访问" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Full Access"
+          }
+        }
+      }
+    },
+    "全部" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All"
+          }
+        }
+      }
+    },
     "关于" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -431,6 +512,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Off (recommended): push with one tap of the Paste button on the home screen — iOS shows no prompt. When on, content you copy is read and pushed automatically; iOS shows an \"Allow Paste\" confirmation each time it reads content copied from another app."
+          }
+        }
+      }
+    },
+    "关闭筛选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close filter"
           }
         }
       }
@@ -482,6 +574,17 @@
         }
       }
     },
+    "最近" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent"
+          }
+        }
+      }
+    },
     "最近 %lld 条" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -492,6 +595,9 @@
           }
         }
       }
+    },
+    "写入本机剪贴板" : {
+
     },
     "凭据" : {
       "extractionState" : "manual",
@@ -518,6 +624,17 @@
         }
       }
     },
+    "切换到 UniClip 键盘时 iOS 会询问一次,点「允许」后以后打开键盘即静默同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS asks once when you switch to the UniClip keyboard; tap Allow and every open after that syncs silently"
+          }
+        }
+      }
+    },
     "切换服务器" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -525,6 +642,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Switch server"
+          }
+        }
+      }
+    },
+    "切换键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch keyboard"
           }
         }
       }
@@ -558,6 +686,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete server"
+          }
+        }
+      }
+    },
+    "刷新" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh"
+          }
+        }
+      }
+    },
+    "前往" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go"
           }
         }
       }
@@ -613,6 +763,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Clipboard Sync"
+          }
+        }
+      }
+    },
+    "加入" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Join"
           }
         }
       }
@@ -686,6 +847,9 @@
     "发送到" : {
 
     },
+    "发送到 ${server}" : {
+
+    },
     "发送剪贴板" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -699,6 +863,17 @@
     },
     "发送失败" : {
 
+    },
+    "发送失败:%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send failed: %@"
+          }
+        }
+      }
     },
     "取消" : {
       "extractionState" : "manual",
@@ -733,6 +908,20 @@
         }
       }
     },
+    "同步失败" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync failed"
+          }
+        }
+      }
+    },
+    "同步成功" : {
+
+    },
     "名称" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -755,6 +944,17 @@
         }
       }
     },
+    "启用键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable the keyboard"
+          }
+        }
+      }
+    },
     "和其他设备共享剪贴板" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -762,6 +962,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Share Clipboard with Other Devices"
+          }
+        }
+      }
+    },
+    "回车" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return"
           }
         }
       }
@@ -787,6 +998,28 @@
         }
       }
     },
+    "在 设置 › 通用 › 键盘 › UniClip 中开启「允许完全访问」,即可在打开键盘时自动同步剪贴板。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on “Allow Full Access” in Settings › General › Keyboard › UniClip to auto-sync your clipboard whenever the keyboard opens."
+          }
+        }
+      }
+    },
+    "在任意输入框切换到 UniClip 键盘时,会把本机刚复制的文本或图片自动发送到当前服务器,并把服务器最新的内容作为候选,点一下即可直接插入——全程不经过系统剪贴板,不会反复弹「允许粘贴」。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to the UniClip keyboard in any text field and it sends the text or image you just copied to the current server, then offers the server's latest content as a candidate you can insert with one tap — all without touching the system pasteboard or repeatedly prompting “Allow Paste”."
+          }
+        }
+      }
+    },
     "在系统设置中开启「位置」权限以读取当前 WiFi" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -794,6 +1027,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enable \"Location\" permission in Settings to read the current Wi-Fi"
+          }
+        }
+      }
+    },
+    "在键盘列表点按 UniClip,打开「允许完全访问」——联网同步与读取剪贴板都需要它" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap UniClip in the keyboards list and turn on “Allow Full Access” — both network sync and reading the clipboard need it"
           }
         }
       }
@@ -849,6 +1093,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy to device"
+          }
+        }
+      }
+    },
+    "复制文本或图片后回到这里即可发送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy text or an image, then come back here to send it"
+          }
+        }
+      }
+    },
+    "复制新内容后首次读取时,iOS 会弹一次「允许粘贴」(对每条新内容逐条授权);重复打开键盘、未复制新内容时不会再弹" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS shows “Allow Paste” the first time it reads each newly-copied item; reopening the keyboard without copying anything new won't prompt again"
           }
         }
       }
@@ -963,6 +1229,17 @@
         }
       }
     },
+    "尚未配置服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No server configured"
+          }
+        }
+      }
+    },
     "尚未配置服务器,请先打开 UniClipboard 主程序添加" : {
 
     },
@@ -1043,6 +1320,17 @@
         }
       }
     },
+    "已发送本机内容:%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent from this device: %@"
+          }
+        }
+      }
+    },
     "已同步" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1050,6 +1338,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Synced"
+          }
+        }
+      }
+    },
+    "已复制" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied"
           }
         }
       }
@@ -1064,6 +1363,9 @@
           }
         }
       }
+    },
+    "已接收最新内容" : {
+
     },
     "已接收最新内容到本机剪贴板" : {
       "extractionState" : "manual",
@@ -1087,6 +1389,26 @@
         }
       }
     },
+    "已接收图像(%@)" : {
+
+    },
+    "已接收图像并写入本机剪贴板" : {
+
+    },
+    "已接收并写入本机剪贴板" : {
+
+    },
+    "已插入" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inserted"
+          }
+        }
+      }
+    },
     "已添加" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1105,6 +1427,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Added WiFi Networks"
+          }
+        }
+      }
+    },
+    "已获授权 — 可读取本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorized — clipboard can be read"
+          }
+        }
+      }
+    },
+    "已获授权 — 当前剪贴板为空" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorized — clipboard is currently empty"
           }
         }
       }
@@ -1318,6 +1662,17 @@
         }
       }
     },
+    "打开 UniClip 系统设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open UniClip in Settings"
+          }
+        }
+      }
+    },
     "打开设置" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1325,6 +1680,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open Settings"
+          }
+        }
+      }
+    },
+    "打开键盘即自动同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the keyboard to auto-sync"
           }
         }
       }
@@ -1373,6 +1739,9 @@
         }
       }
     },
+    "把内容发送到 UniClipboard 服务器,供其他设备接收。可在快捷指令中指定目标服务器,以及要发送的文本或文件;都不指定时回退读取本机剪贴板。" : {
+
+    },
     "把这台设备当前的剪贴板发到 UniClipboard 服务器,供其他设备接收。" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1413,6 +1782,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grant location access to read the current Wi-Fi"
+          }
+        }
+      }
+    },
+    "授权本机读取剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorize clipboard access on this device"
           }
         }
       }
@@ -1468,6 +1848,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Push device clipboard to server"
+          }
+        }
+      }
+    },
+    "搜索" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search"
+          }
+        }
+      }
+    },
+    "收起键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dismiss keyboard"
           }
         }
       }
@@ -1602,6 +2004,50 @@
     "暂不支持这种内容" : {
 
     },
+    "暂无剪贴板记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No clipboard history yet"
+          }
+        }
+      }
+    },
+    "暂无图片记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No images yet"
+          }
+        }
+      }
+    },
+    "暂无文本记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No text yet"
+          }
+        }
+      }
+    },
+    "暂无链接记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No links yet"
+          }
+        }
+      }
+    },
     "更早" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1634,6 +2080,9 @@
           }
         }
       }
+    },
+    "服务器最新内容是文件或多类型组合,无法直接作为文本接收" : {
+
     },
     "服务器最新内容是文件或多类型组合,无法直接粘贴到剪贴板" : {
       "extractionState" : "manual",
@@ -1730,6 +2179,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nothing on the server"
+          }
+        }
+      }
+    },
+    "服务器暂无可插入内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing to insert from the server"
           }
         }
       }
@@ -2004,6 +2464,17 @@
     "正在发送到 %@…" : {
 
     },
+    "正在同步…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncing…"
+          }
+        }
+      }
+    },
     "正在应用…" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2030,6 +2501,9 @@
       }
     },
     "没有可分享的内容" : {
+
+    },
+    "没有可发送的内容 — 请在快捷指令里提供文本或文件,或先复制一些内容" : {
 
     },
     "浅色" : {
@@ -2072,6 +2546,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add"
+          }
+        }
+      }
+    },
+    "添加 UniClip 键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add the UniClip keyboard"
           }
         }
       }
@@ -2120,6 +2605,17 @@
         }
       }
     },
+    "点按后 iOS 会弹出一次「允许粘贴」。允许后,主程序也能在「自动推送本机剪贴板」开启时静默读取并推送,并会在 设置 › UniClip 出现「粘贴自其他 App」开关。授权按 App 独立,键盘会在首次使用时单独询问。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tapping it prompts “Allow Paste” once. After you allow it, the main app can also read and push silently when “Auto-push device clipboard” is on, and a “Paste from Other Apps” switch appears under Settings › UniClip. Authorization is per app — the keyboard asks separately on first use."
+          }
+        }
+      }
+    },
     "点按按钮即可同步" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2138,6 +2634,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Version"
+          }
+        }
+      }
+    },
+    "用 UniClip 键盘在任意 App 里打开即自动同步剪贴板；并可在此授权「粘贴自其他 App」。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the UniClip keyboard in any app to auto-sync your clipboard; you can also authorize “Paste from Other Apps” here."
           }
         }
       }
@@ -2197,6 +2704,17 @@
         }
       }
     },
+    "空格" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "space"
+          }
+        }
+      }
+    },
     "立即重试" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2204,6 +2722,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Retry now"
+          }
+        }
+      }
+    },
+    "筛选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter"
           }
         }
       }
@@ -2307,6 +2836,17 @@
         }
       }
     },
+    "自动粘贴授权" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-paste authorization"
+          }
+        }
+      }
+    },
     "蜂窝下也预下载" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2395,6 +2935,17 @@
         }
       }
     },
+    "设置 › 通用 › 键盘 › 键盘 › 添加新键盘,选择 UniClip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings › General › Keyboard › Keyboards › Add New Keyboard, then choose UniClip"
+          }
+        }
+      }
+    },
     "诊断" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2435,6 +2986,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add a server in UniClipboard first"
+          }
+        }
+      }
+    },
+    "请先打开 UniClipboard 主程序添加服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the UniClipboard app first to add a server"
           }
         }
       }
@@ -2596,6 +3158,39 @@
         }
       }
     },
+    "链接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link"
+          }
+        }
+      }
+    },
+    "键盘与自动同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard & auto-sync"
+          }
+        }
+      }
+    },
+    "需要「完全访问权限」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Full Access required"
+          }
+        }
+      }
+    },
     "项目主页" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2625,6 +3220,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Preview"
+          }
+        }
+      }
+    },
+    "首次使用点「允许粘贴」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap “Allow Paste” on first use"
           }
         }
       }

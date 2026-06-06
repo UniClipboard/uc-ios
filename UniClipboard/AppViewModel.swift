@@ -675,6 +675,29 @@ final class AppViewModel {
         }
     }
 
+    /// Reconcile the in-memory `history` with the on-disk log on foreground.
+    /// Extensions (keyboard / share) append `.pushed` rows directly to the
+    /// App Group store while this app is suspended; without this merge the
+    /// app's next `history` mutation (e.g. a SyncEngine append) would persist
+    /// its stale in-memory copy and clobber those rows. We union by `id`
+    /// (disk wins on conflicts), re-sort newest-first, and cap — so nothing
+    /// the user did in the keyboard is lost, and nothing they deleted here
+    /// resurrects (a delete persisted to disk, so it's absent from both
+    /// sides). Idempotent and cheap; safe to call on every `.active`.
+    func reconcileSharedHistory() {
+        let disk = store.loadHistory()
+        var byId: [UUID: ClipboardHistoryItem] = [:]
+        for item in history { byId[item.id] = item }
+        for item in disk { byId[item.id] = item }   // disk wins on conflicts
+        let merged = byId.values.sorted { $0.timestamp > $1.timestamp }
+        let capped = merged.count > Self.maxHistoryCount ? Array(merged.prefix(Self.maxHistoryCount)) : Array(merged)
+        // Only assign (triggering the persisting didSet) if something actually
+        // changed, so a no-op foreground doesn't rewrite the blob.
+        if capped != history {
+            history = capped
+        }
+    }
+
     /// Trim `history` to `maxHistoryCount` and fire a best-effort cache
     /// delete for every evicted entry's `profileId`. Used by both
     /// `appendHistory` and `mergeHistoryRecord` after their respective

@@ -154,6 +154,10 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
+                // Pick up history rows the keyboard / share extension appended
+                // to the App Group while we were suspended, before the engine
+                // starts mutating (and persisting) the in-memory log.
+                vm.reconcileSharedHistory()
                 // Refresh SSID on foreground so a Wi-Fi flip that happened
                 // while backgrounded re-evaluates `wifiSwitchSuggestion`
                 // right away instead of waiting for the next NWPathMonitor
