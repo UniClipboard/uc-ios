@@ -51,6 +51,17 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
     /// UI appearance preference. Default `.system` so existing installs
     /// keep their current behavior (follow iOS appearance).
     public var appearance: AppearanceMode
+    /// When true, key taps in the UniClip keyboard extension play the
+    /// system key-click sound via `UIDevice.playInputClick()` — which iOS
+    /// further gates on the global 键盘点击音 switch. Default true to match
+    /// a stock keyboard. Lives in `app_settings` so the App Group-shared
+    /// keyboard reads it without a dedicated key.
+    public var keyboardSoundFeedback: Bool
+    /// When true, key taps in the UniClip keyboard extension fire a light
+    /// haptic. iOS blocks haptics for keyboards without Full Access, which
+    /// the keyboard already requires for its core sync, so this is free to
+    /// honor. Default true.
+    public var keyboardHapticFeedback: Bool
 
     public static let defaults = AppSettings(
         trustInsecureCert: false,
@@ -64,7 +75,9 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         prefetchAttachments: true,
         prefetchOnCellular: false,
         payloadCacheMaxBytes: 200 * 1024 * 1024,
-        appearance: .system
+        appearance: .system,
+        keyboardSoundFeedback: true,
+        keyboardHapticFeedback: true
     )
 
     public init(
@@ -79,7 +92,9 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         prefetchAttachments: Bool = true,
         prefetchOnCellular: Bool = false,
         payloadCacheMaxBytes: Int = 200 * 1024 * 1024,
-        appearance: AppearanceMode = .system
+        appearance: AppearanceMode = .system,
+        keyboardSoundFeedback: Bool = true,
+        keyboardHapticFeedback: Bool = true
     ) {
         self.trustInsecureCert = trustInsecureCert
         self.autoCheckUpdate = autoCheckUpdate
@@ -93,6 +108,8 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         self.prefetchOnCellular = prefetchOnCellular
         self.payloadCacheMaxBytes = payloadCacheMaxBytes
         self.appearance = appearance
+        self.keyboardSoundFeedback = keyboardSoundFeedback
+        self.keyboardHapticFeedback = keyboardHapticFeedback
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -102,6 +119,7 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         case autoPushDeviceChanges
         case prefetchAttachments, prefetchOnCellular, payloadCacheMaxBytes
         case appearance
+        case keyboardSoundFeedback, keyboardHapticFeedback
     }
 
     public init(from decoder: any Decoder) throws {
@@ -126,6 +144,8 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         } else {
             appearance = d.appearance
         }
+        keyboardSoundFeedback   = try c.decodeIfPresent(Bool.self,   forKey: .keyboardSoundFeedback)   ?? d.keyboardSoundFeedback
+        keyboardHapticFeedback  = try c.decodeIfPresent(Bool.self,   forKey: .keyboardHapticFeedback)  ?? d.keyboardHapticFeedback
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -142,6 +162,8 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         try c.encode(prefetchOnCellular,      forKey: .prefetchOnCellular)
         try c.encode(payloadCacheMaxBytes,    forKey: .payloadCacheMaxBytes)
         try c.encode(appearance.rawValue,     forKey: .appearance)
+        try c.encode(keyboardSoundFeedback,   forKey: .keyboardSoundFeedback)
+        try c.encode(keyboardHapticFeedback,  forKey: .keyboardHapticFeedback)
     }
 }
 

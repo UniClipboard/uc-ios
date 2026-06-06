@@ -24,15 +24,21 @@ final class KeyboardViewController: UIInputViewController {
     private let model = KeyboardModel()
     private var host: UIHostingController<KeyboardRootView>?
 
-    /// Custom keyboard height. Priority 999 (not required) so it can never
-    /// conflict with the system-imposed constraints on the input view.
+    /// Custom keyboard height, sized to *hug* its content so the card row sits
+    /// snug between the top bar and the key row instead of floating in a tall
+    /// frame. The Paste-style layout stacks a branded/search top bar, a row of
+    /// 150pt clipboard cards, and the space/⌫/return key row — that's
+    /// `contentHeight`. The globe strip is added only when iOS needs an
+    /// input-mode switch key (see `viewDidAppear`); without it the strip
+    /// collapses and the keyboard shrinks by the same band, rather than letting
+    /// the freed space float the cards up off the keys. Priority 999 (not
+    /// required) so it can never conflict with the system-imposed constraints
+    /// on the input view.
+    private static let contentHeight: CGFloat = 252      // top bar (44) + 150pt card row (158) + key row (50)
+    private static let bottomStripHeight: CGFloat = 40   // globe strip: 2 top + 30 frame + 8 bottom
+
     private lazy var heightConstraint: NSLayoutConstraint = {
-        // Taller than a stock keyboard: the Paste-style layout stacks a
-        // branded/search top bar, a row of 150pt clipboard cards, the
-        // space/⌫/return key row, and a globe/dismiss strip. Priority 999
-        // (not required) so it can never conflict with the system-imposed
-        // constraints on the input view.
-        let c = view.heightAnchor.constraint(equalToConstant: 310)
+        let c = view.heightAnchor.constraint(equalToConstant: Self.contentHeight)
         c.priority = UILayoutPriority(999)
         return c
     }()
@@ -53,6 +59,12 @@ final class KeyboardViewController: UIInputViewController {
         }
         model.dismiss = { [unowned self] in
             self.dismissKeyboard()
+        }
+        // The click only sounds when our input view adopts
+        // `UIInputViewAudioFeedback` (below) and the user has 键盘点击音 on —
+        // so the model can call this unconditionally and let iOS decide.
+        model.playInputClick = { [unowned self] in
+            UIDevice.current.playInputClick()
         }
 
         // Keep every layer transparent so the system-drawn keyboard tray
@@ -80,11 +92,17 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        heightConstraint.isActive = true
         // `hasFullAccess` / `needsInputModeSwitchKey` are only reliable once
         // the input view is on screen — read them here, then drive the sync.
         model.needsInputModeSwitchKey = needsInputModeSwitchKey
         model.hasFullAccess = hasFullAccess
+        // Size to content: add the globe band only when the strip is shown, so a
+        // single-keyboard install doesn't leave the freed space floating the
+        // card row up off the keys.
+        heightConstraint.constant = needsInputModeSwitchKey
+            ? Self.contentHeight + Self.bottomStripHeight
+            : Self.contentHeight
+        heightConstraint.isActive = true
         model.setReturnKeyType(textDocumentProxy.returnKeyType)
         model.onAppear()
     }
@@ -104,4 +122,12 @@ final class KeyboardViewController: UIInputViewController {
         // run a background timer the user can't see.
         model.stopMonitoring()
     }
+}
+
+/// Opt the keyboard into the system key-click sound. `playInputClick()` is a
+/// no-op unless the first responder's input view (here, the input view
+/// controller) adopts this protocol and returns `true`; iOS still gates the
+/// actual sound on the user's global 键盘点击音 setting.
+extension KeyboardViewController: UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
 }

@@ -75,6 +75,13 @@ final class KeyboardModel {
     var hasFullAccess: Bool = false
     var needsInputModeSwitchKey: Bool = true
 
+    /// Key-feedback prefs, mirrored from `AppSettings` (App Group). Read
+    /// once on appear and re-read on each sync pass so a change made in the
+    /// main app takes effect the next time the keyboard opens. Default true
+    /// so a fresh install feels like a stock keyboard.
+    private(set) var soundFeedback = true
+    private(set) var hapticFeedback = true
+
     private(set) var gate: Gate = .ok
     /// Drives the header's refresh spinner. Independent of `cards` so a sync
     /// pass never blanks out the already-visible row.
@@ -111,6 +118,15 @@ final class KeyboardModel {
     var deleteBackward: () -> Void = {}
     var advanceInputMode: () -> Void = {}
     var dismiss: () -> Void = {}
+    /// Plays the system key-click sound. Wired by the controller to
+    /// `UIDevice.current.playInputClick()` — which only fires when the
+    /// input view adopts `UIInputViewAudioFeedback` AND the user has
+    /// 键盘点击音 enabled, so the model never has to check that itself.
+    var playInputClick: () -> Void = {}
+
+    /// Reused light-impact generator for key haptics. Kept warm via
+    /// `prepare()` so a press fires with minimal latency.
+    private let impactGenerator = UIImpactFeedbackGenerator(style: .light)
 
     /// One App-Group store for the keyboard's lifetime — reused by the live
     /// poll (~1.2s) and the sync paths so we don't re-run the store's
@@ -139,6 +155,11 @@ final class KeyboardModel {
     /// history instantly, runs an initial sync pass, and starts watching the
     /// pasteboard for changes while open.
     func onAppear() {
+        // Load feedback prefs first — the space/⌫/return keys work (and so
+        // should honor the click/haptic toggles) even before Full Access,
+        // i.e. before the gate below short-circuits.
+        loadFeedbackPrefs()
+        impactGenerator.prepare()
         guard hasFullAccess else {
             gate = .needsFullAccess
             return
@@ -146,6 +167,27 @@ final class KeyboardModel {
         reloadCards()        // instant, offline — render before the network round-trip
         refresh()
         startMonitoring()
+    }
+
+    /// Mirror the keyboard-feedback toggles out of the App Group settings.
+    /// Cheap (one `UserDefaults` data decode); called on appear and on each
+    /// sync pass so a change in the main app is picked up promptly.
+    private func loadFeedbackPrefs() {
+        let s = store.loadAppSettings()
+        soundFeedback = s.keyboardSoundFeedback
+        hapticFeedback = s.keyboardHapticFeedback
+    }
+
+    /// Fire key feedback for a button/key tap: the system click sound and a
+    /// light haptic, each gated by the user's prefs. `haptic: false` suppresses
+    /// only the haptic (used by backspace auto-repeat, where a buzz on every
+    /// repeat tick would be unpleasant while the click still reads as typing).
+    func keyFeedback(haptic: Bool = true) {
+        if soundFeedback { playInputClick() }
+        if haptic, hapticFeedback {
+            impactGenerator.impactOccurred()
+            impactGenerator.prepare()   // re-arm for the next press
+        }
     }
 
     /// Re-run the sync pass. Cancels any in-flight pass first so a fast
@@ -251,7 +293,10 @@ final class KeyboardModel {
         }
         gate = .ok
         serverLabel = server.displayLabel
-        let trust = store.loadAppSettings().trustInsecureCert
+        let settings = store.loadAppSettings()
+        let trust = settings.trustInsecureCert
+        soundFeedback = settings.keyboardSoundFeedback
+        hapticFeedback = settings.keyboardHapticFeedback
         ctx = (server, trust)
 
         isSyncing = true
@@ -415,6 +460,7 @@ final class KeyboardModel {
     /// re-push it.
     func activate(_ card: Card) {
         guard actingCardID == nil else { return }
+        keyFeedback()
         let e = card.entry
         switch card.kind {
         case .text, .link:

@@ -67,7 +67,7 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
-                    KeyboardSetupView()
+                    KeyboardSetupView(appSettings: $vm.appSettings)
                 } label: {
                     Label("键盘与自动同步", systemImage: "keyboard")
                 }

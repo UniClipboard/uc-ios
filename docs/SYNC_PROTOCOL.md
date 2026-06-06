@@ -702,7 +702,8 @@ contained in the normalized `cfg.autoSwitchWifiNames`.
   consent-based by default (a `PasteButton` the user taps). Setting it true
   opts into fully-automatic push and the recurring prompt that entails. A
   client MAY persist additional UI/cache keys (appearance, prefetch policy,
-  payload cache size); they follow the same default-and-tolerate rule.
+  payload cache size, keyboard-extension feedback toggles `keyboardSoundFeedback`
+  / `keyboardHapticFeedback`); they follow the same default-and-tolerate rule.
 
 ### 5.5 Persistence keys
 

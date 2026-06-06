@@ -21,6 +21,7 @@ import UIKit
 /// appear in Settings) so fully-automatic push (§ AppSettings.autoPushDeviceChanges)
 /// can run without prompting later.
 struct KeyboardSetupView: View {
+    @Binding var appSettings: AppSettings
     @State private var pasteProbe: PasteProbeResult = .idle
 
     enum PasteProbeResult: Equatable {
@@ -61,6 +62,20 @@ struct KeyboardSetupView: View {
                 Text("启用键盘")
             } footer: {
                 Text("「允许完全访问」位于 设置 › 通用 › 键盘 › UniClip。系统未提供直达该页的链接,可从上方系统设置页逐级进入。")
+                    .font(.caption)
+            }
+
+            Section {
+                Toggle(isOn: $appSettings.keyboardSoundFeedback) {
+                    Label("按键音", systemImage: "speaker.wave.2")
+                }
+                Toggle(isOn: $appSettings.keyboardHapticFeedback) {
+                    Label("触感反馈", systemImage: "hand.tap")
+                }
+            } header: {
+                Text("按键反馈")
+            } footer: {
+                Text("在 UniClip 键盘上点按时的声音与振动。按键音还受系统「设置 › 声音与触感」里「键盘点击音」总开关影响;触感反馈需要键盘「允许完全访问」。")
                     .font(.caption)
             }
 
@@ -139,7 +154,8 @@ struct KeyboardSetupView: View {
 }
 
 #Preview {
-    NavigationStack {
-        KeyboardSetupView()
+    @Previewable @State var settings = AppSettings.defaults
+    return NavigationStack {
+        KeyboardSetupView(appSettings: $settings)
     }
 }

@@ -46,8 +46,11 @@ struct KeyboardRootView: View {
             VStack(spacing: 0) {
                 topBar
                     .padding(.horizontal, 12)
-                    .padding(.top, 9)
-                    .padding(.bottom, 6)
+                    // Symmetric, snug vertical insets so the bar hugs the card
+                    // row beneath it — the 36pt bar already frames the ~30pt
+                    // capsule / 34pt circle buttons, so anything larger reads as
+                    // a loose, empty band between the three stacked sections.
+                    .padding(.vertical, 4)
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 keyRow
@@ -148,7 +151,10 @@ struct KeyboardRootView: View {
                 .frame(width: 34, height: 34)
                 .liquidGlassCircle()
                 .contentShape(Circle())
-                .onTapGesture { model.refresh(force: true) }
+                .onTapGesture {
+                    model.keyFeedback()
+                    model.refresh(force: true)
+                }
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
                 .accessibilityLabel(Text(flash == .success ? "同步成功" : "同步失败"))
         } else {
@@ -175,6 +181,7 @@ struct KeyboardRootView: View {
                     ForEach(Filter.allCases) { f in
                         let isOn = f == filter
                         Button {
+                            model.keyFeedback()
                             withAnimation(.snappy(duration: 0.2)) { filter = f }
                         } label: {
                             Text(f.title)
@@ -255,7 +262,10 @@ struct KeyboardRootView: View {
             centered {
                 VStack(spacing: 10) {
                     infoBlock(system: "exclamationmark.triangle", title: String(localized: "同步失败"), message: err)
-                    Button { model.refresh(force: true) } label: {
+                    Button {
+                        model.keyFeedback()
+                        model.refresh(force: true)
+                    } label: {
                         Label("重试", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.bordered)
@@ -315,6 +325,7 @@ struct KeyboardRootView: View {
             VStack(spacing: 2) {
                 ForEach(serverChoices) { server in
                     Button {
+                        model.keyFeedback()
                         if server.id != activeServerId { model.setActiveServer(server.id) }
                         closeSwitcher()
                     } label: {
@@ -359,14 +370,17 @@ struct KeyboardRootView: View {
         }
         .frame(height: 46)
         .padding(.horizontal, 12)
-        .padding(.top, 6)
+        .padding(.top, 4)
     }
 
     private var spaceKey: some View {
-        Button { model.insertText(" ") } label: {
+        Button {
+            model.keyFeedback()
+            model.insertText(" ")
+        } label: {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .liquidGlassKey()
+                .flatKey()
                 .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -374,7 +388,10 @@ struct KeyboardRootView: View {
     }
 
     private var returnKey: some View {
-        Button { model.insertText("\n") } label: {
+        Button {
+            model.keyFeedback()
+            model.insertText("\n")
+        } label: {
             Group {
                 if let title = model.returnKeyTitle {
                     Text(title).font(.callout.weight(.semibold))
@@ -397,18 +414,25 @@ struct KeyboardRootView: View {
 
     // MARK: - Bottom strip (globe / dismiss)
 
+    @ViewBuilder
     private var bottomStrip: some View {
-        HStack(spacing: 0) {
-            if model.needsInputModeSwitchKey {
-                glyphButton(system: "globe", size: 30) { model.advanceInputMode() }
+        // Only the globe lives down here. When iOS doesn't need a keyboard
+        // switch key (e.g. UniClip is the only third-party keyboard) the
+        // whole strip collapses so the keyboard ends right under the key row
+        // instead of leaving a tall empty band above the home indicator.
+        if model.needsInputModeSwitchKey {
+            HStack(spacing: 0) {
+                glyphButton(system: "globe", size: 28) { model.advanceInputMode() }
                     .accessibilityLabel(Text("切换键盘"))
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, 16)
+            .padding(.top, 2)
+            // Keep a little breathing room above the home indicator — flush
+            // against the bottom edge reads as cramped.
+            .padding(.bottom, 8)
+            .frame(height: 30)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
-        .padding(.bottom, 6)
-        .frame(height: 34)
     }
 
     // MARK: - Full-access hint
@@ -448,7 +472,10 @@ struct KeyboardRootView: View {
     }
 
     private func glyphButton(system: String, size: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            model.keyFeedback()
+            action()
+        } label: {
             Image(systemName: system)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -462,7 +489,10 @@ struct KeyboardRootView: View {
     /// language of the centered server capsule so 🔍 / ⟳ / ✕ sit as a
     /// balanced set instead of bare floating glyphs.
     private func circleButton(system: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            model.keyFeedback()
+            action()
+        } label: {
             Image(systemName: system)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.primary)
@@ -501,7 +531,7 @@ private struct BackspaceKey: View {
             .font(.system(size: 18, weight: .medium))
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .liquidGlassKey()
+            .flatKey()
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             .opacity(pressing ? 0.55 : 1)
             .animation(.easeOut(duration: 0.08), value: pressing)
@@ -521,11 +551,13 @@ private struct BackspaceKey: View {
     private func startRepeating() {
         repeatTask?.cancel()
         repeatTask = Task { @MainActor in
+            model.keyFeedback()                           // tactile confirm on touch-down
             model.deleteBackward()                        // immediate first delete
             try? await Task.sleep(for: .seconds(0.45))    // hold before auto-repeat kicks in
             var interval: Double = 0.11
             var count = 0
             while !Task.isCancelled, count < 600 {        // cap: runaway backstop
+                model.keyFeedback(haptic: false)          // click on each repeat, no buzz
                 model.deleteBackward()
                 count += 1
                 try? await Task.sleep(for: .seconds(interval))
@@ -563,6 +595,11 @@ private struct CardView: View {
             .overlay(alignment: .center) {
                 if didAct { actedOverlay }
             }
+            // The card IS the button: without an explicit content shape, a
+            // .plain button only hit-tests its rendered subviews (the text
+            // glyphs), so the empty area below short text and the image
+            // padding felt dead. Pin the hit target to the whole card.
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(model.actingCardID != nil)
@@ -675,37 +712,40 @@ private struct CardThumbnail: View {
     private let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
 
     var body: some View {
-        ZStack {
-            shape
-                .fill(
-                    LinearGradient(
-                        colors: [Color.orange.opacity(0.18), Color.pink.opacity(0.12)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
+        // The gradient fill is the PRIMARY view, so it alone defines the
+        // layout size (a Shape fills exactly the proposed slot). The thumbnail
+        // rides as an `.overlay`: overlays never resize their primary, so
+        // `scaledToFill`'s deliberately-oversized measurement can't grow the
+        // card the way it did inside a ZStack (a flexible `.frame` won't clamp
+        // it either — `max:.infinity` lets the oversize through). `clipShape`
+        // then trims the overflow to a centered crop.
+        shape
+            .fill(
+                LinearGradient(
+                    colors: [Color.orange.opacity(0.18), Color.pink.opacity(0.12)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
                 )
-                .overlay {
-                    if image == nil {
-                        Image(systemName: didLoad ? "photo" : "photo.badge.arrow.down")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                            .symbolEffect(.pulse, isActive: !didLoad)
-                    }
+            )
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .transition(.opacity)
+                } else {
+                    Image(systemName: didLoad ? "photo" : "photo.badge.arrow.down")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .symbolEffect(.pulse, isActive: !didLoad)
                 }
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .clipShape(shape)
-                    .transition(.opacity)
             }
-        }
-        .clipShape(shape)
-        .task(id: card.id) {
-            didLoad = false
-            image = await model.thumbnail(for: card)
-            didLoad = true
-        }
-        .animation(.easeInOut(duration: 0.2), value: image)
+            .clipShape(shape)
+            .task(id: card.id) {
+                didLoad = false
+                image = await model.thumbnail(for: card)
+                didLoad = true
+            }
+            .animation(.easeInOut(duration: 0.2), value: image)
     }
 }
 
@@ -749,17 +789,24 @@ private extension View {
         }
     }
 
-    /// Tappable key surface — slightly firmer than a card so it reads as a key.
+    /// Flat, opaque key cap for the space / ⌫ keys. Deliberately NOT Liquid
+    /// Glass — the reflective glass read oddly on tappable keys. A solid fill
+    /// that sits a shade lighter than the keyboard tray in both schemes
+    /// (white on light, mid-gray on dark), with a hairline edge so it still
+    /// reads as a raised key.
     @ViewBuilder
-    func liquidGlassKey() -> some View {
+    func flatKey() -> some View {
         let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-        } else {
-            self
-                .background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.05)))
-        }
+        self
+            .background(
+                Color(uiColor: UIColor { trait in
+                    trait.userInterfaceStyle == .dark
+                        ? UIColor(white: 0.34, alpha: 1.0)
+                        : UIColor.white
+                }),
+                in: shape
+            )
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.08)))
     }
 }
 

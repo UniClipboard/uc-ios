@@ -319,6 +319,10 @@ final class FixturesTests: XCTestCase {
             // UI appearance preference (light/dark/system). Always encoded
             // as a raw String; decode falls back to .system when missing.
             "appearance",
+            // Keyboard-extension feedback toggles. Always encoded (Bool);
+            // fixture omits them and decode falls back to true (stock-keyboard
+            // feel). Read by the keyboard via the App Group.
+            "keyboardSoundFeedback", "keyboardHapticFeedback",
         ])
     }
 
