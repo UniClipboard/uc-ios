@@ -399,11 +399,14 @@ struct KeyboardRootView: View {
                     Image(systemName: "return").font(.system(size: 18, weight: .medium))
                 }
             }
-            // AccentColor's dark-mode variant is ivory, so the default white
-            // label vanishes against the tint — paint the label in
-            // systemBackground, which flips with appearance. (CLAUDE.md theme
-            // gotcha for anything on top of Color.accentColor.)
-            .foregroundStyle(Color(.systemBackground))
+            // Return is an emphasized solid key. The cap is Color.accentColor,
+            // which in THIS extension resolves to the system blue: the appex
+            // bundle doesn't carry the app's AccentColor asset (it lives under
+            // UniClipboard/, which the keyboard target doesn't compile), so the
+            // app's dark-ink / ivory pair never applies here. A fixed white
+            // glyph reads cleanly on that blue in both schemes — the old
+            // systemBackground glyph went black in dark mode (black-on-blue).
+            .foregroundStyle(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
