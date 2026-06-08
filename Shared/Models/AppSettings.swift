@@ -62,6 +62,25 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
     /// the keyboard already requires for its core sync, so this is free to
     /// honor. Default true.
     public var keyboardHapticFeedback: Bool
+    /// Whether the first-run onboarding (feature walkthrough) has been shown.
+    /// False on a fresh install → `ContentView` routes into `OnboardingView`
+    /// before `SetupFlowView`. Set true when the user finishes/skips
+    /// onboarding; `AppViewModel.init` also force-sets it for upgraded
+    /// installs that already have servers, so they never see onboarding.
+    public var onboardingShown: Bool
+    /// Whether the Home paste-permission hint banner has been dismissed. The
+    /// banner only shows while `autoPushDeviceChanges` is on (the engine then
+    /// reads the pasteboard each tick, which iOS gates behind「允许粘贴」); once
+    /// the user dismisses it we don't nag again.
+    public var pastePermissionHintDismissed: Bool
+    /// Whether the post-pairing "解锁更多" enhancements carousel (keyboard /
+    /// share / paste tutorials) has been shown. False on a fresh install →
+    /// `ContentView` auto-presents the carousel once, right after the first-run
+    /// pairing completes. Set true the moment it's presented so it never pops
+    /// again; `AppViewModel.init` also force-sets it for upgraded installs that
+    /// already have servers, so they skip the prompt entirely. The same three
+    /// tutorials stay re-viewable from Settings →「功能引导」regardless.
+    public var enhancementsPromptShown: Bool
 
     public static let defaults = AppSettings(
         trustInsecureCert: false,
@@ -77,7 +96,10 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         payloadCacheMaxBytes: 200 * 1024 * 1024,
         appearance: .system,
         keyboardSoundFeedback: true,
-        keyboardHapticFeedback: true
+        keyboardHapticFeedback: true,
+        onboardingShown: false,
+        pastePermissionHintDismissed: false,
+        enhancementsPromptShown: false
     )
 
     public init(
@@ -94,7 +116,10 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         payloadCacheMaxBytes: Int = 200 * 1024 * 1024,
         appearance: AppearanceMode = .system,
         keyboardSoundFeedback: Bool = true,
-        keyboardHapticFeedback: Bool = true
+        keyboardHapticFeedback: Bool = true,
+        onboardingShown: Bool = false,
+        pastePermissionHintDismissed: Bool = false,
+        enhancementsPromptShown: Bool = false
     ) {
         self.trustInsecureCert = trustInsecureCert
         self.autoCheckUpdate = autoCheckUpdate
@@ -110,6 +135,9 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         self.appearance = appearance
         self.keyboardSoundFeedback = keyboardSoundFeedback
         self.keyboardHapticFeedback = keyboardHapticFeedback
+        self.onboardingShown = onboardingShown
+        self.pastePermissionHintDismissed = pastePermissionHintDismissed
+        self.enhancementsPromptShown = enhancementsPromptShown
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -120,6 +148,9 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         case prefetchAttachments, prefetchOnCellular, payloadCacheMaxBytes
         case appearance
         case keyboardSoundFeedback, keyboardHapticFeedback
+        case onboardingShown
+        case pastePermissionHintDismissed
+        case enhancementsPromptShown
     }
 
     public init(from decoder: any Decoder) throws {
@@ -146,6 +177,9 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         }
         keyboardSoundFeedback   = try c.decodeIfPresent(Bool.self,   forKey: .keyboardSoundFeedback)   ?? d.keyboardSoundFeedback
         keyboardHapticFeedback  = try c.decodeIfPresent(Bool.self,   forKey: .keyboardHapticFeedback)  ?? d.keyboardHapticFeedback
+        onboardingShown         = try c.decodeIfPresent(Bool.self,   forKey: .onboardingShown)         ?? d.onboardingShown
+        pastePermissionHintDismissed = try c.decodeIfPresent(Bool.self, forKey: .pastePermissionHintDismissed) ?? d.pastePermissionHintDismissed
+        enhancementsPromptShown = try c.decodeIfPresent(Bool.self, forKey: .enhancementsPromptShown) ?? d.enhancementsPromptShown
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -164,6 +198,9 @@ public struct AppSettings: Codable, Equatable, Hashable, Sendable {
         try c.encode(appearance.rawValue,     forKey: .appearance)
         try c.encode(keyboardSoundFeedback,   forKey: .keyboardSoundFeedback)
         try c.encode(keyboardHapticFeedback,  forKey: .keyboardHapticFeedback)
+        try c.encode(onboardingShown,         forKey: .onboardingShown)
+        try c.encode(pastePermissionHintDismissed, forKey: .pastePermissionHintDismissed)
+        try c.encode(enhancementsPromptShown, forKey: .enhancementsPromptShown)
     }
 }
 
@@ -196,6 +233,12 @@ public extension AppSettings {
         /// open. ISO-8601 string for `defaults read` debuggability,
         /// matching `historyModifiedAfter`.
         public static let lastHistorySyncAt = "last_history_sync_at"
+        /// Written by the keyboard extension on each `viewDidAppear` so
+        /// the main app can detect whether the extension is installed.
+        public static let keyboardExtensionEnabled = "keyboard_extension_enabled"
+        /// Written alongside `keyboardExtensionEnabled`; reflects the
+        /// `hasFullAccess` state at the time the keyboard last appeared.
+        public static let keyboardExtensionFullAccess = "keyboard_extension_full_access"
         /// The `UIPasteboard.changeCount` the keyboard extension last synced.
         /// Lets the keyboard's uplink skip the prompting content read when
         /// nothing new has been copied since. Not a user setting.

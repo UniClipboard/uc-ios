@@ -453,6 +453,11 @@ struct KeyboardRootView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
+                Button("前往设置 ›") {
+                    model.openSettings()
+                }
+                .buttonStyle(.borderedProminent)
+                .foregroundStyle(Color(.systemBackground))
             }
         }
     }
@@ -809,7 +814,6 @@ private extension View {
                 }),
                 in: shape
             )
-            .overlay(shape.strokeBorder(Color.primary.opacity(0.08)))
     }
 }
 

@@ -186,6 +186,28 @@ final class AppViewModel {
         // flip, and the first reconcile compares against the right baseline.
         self.lastEffectiveServerId = self.activeServer?.id
         store.saveLastKnownSSID(self.ssidProvider.currentSSID)
+        // Upgrade guard: an install that already has servers predates the
+        // onboarding flow, so mark both the first-run walkthrough AND the
+        // post-pairing enhancements carousel as shown — returning/upgrading
+        // users must never get either. Batched into one assignment so the
+        // `appSettings` didSet persists once. `forceFreshServers` (UC_FRESH)
+        // empties configs, so those screenshot runs are exempt and still reach
+        // SetupFlow/onboarding.
+        if !servers.configs.isEmpty && !appSettings.onboardingShown {
+            var s = appSettings
+            s.onboardingShown = true
+            s.enhancementsPromptShown = true
+            appSettings = s
+        }
+    }
+
+    /// Mark the first-run onboarding (feature walkthrough) as finished. Flips
+    /// `onboardingShown` (persisted via the `appSettings` didSet) so
+    /// `ContentView` stops routing into `OnboardingView` and falls through to
+    /// the SetupFlow (configs empty) or the main Tabs (configs present).
+    func completeOnboarding() {
+        guard !appSettings.onboardingShown else { return }
+        appSettings.onboardingShown = true
     }
 
     /// The server in use *right now* — the manual baseline (§5.2

@@ -66,6 +66,20 @@ final class KeyboardViewController: UIInputViewController {
         model.playInputClick = { [unowned self] in
             UIDevice.current.playInputClick()
         }
+        model.openSettings = { [unowned self] in
+            let keyboard = URL(string: "App-prefs:General&path=Keyboard")
+            let fallback = URL(string: UIApplication.openSettingsURLString)
+            guard let url = keyboard ?? fallback else { return }
+            let selector = sel_registerName("openURL:")
+            var responder: UIResponder? = self
+            while let r = responder {
+                if r.responds(to: selector) {
+                    r.perform(selector, with: url)
+                    return
+                }
+                responder = r.next
+            }
+        }
 
         // Keep every layer transparent so the system-drawn keyboard tray
         // (flat gray pre-iOS 26, Liquid Glass on iOS 26+) shows through. The
@@ -105,6 +119,10 @@ final class KeyboardViewController: UIInputViewController {
         heightConstraint.isActive = true
         model.setReturnKeyType(textDocumentProxy.returnKeyType)
         model.onAppear()
+        if let group = UserDefaults(suiteName: SettingsStore.appGroupID) {
+            group.set(true, forKey: AppSettings.PersistenceKey.keyboardExtensionEnabled)
+            group.set(hasFullAccess, forKey: AppSettings.PersistenceKey.keyboardExtensionFullAccess)
+        }
     }
 
     /// The host field can change (e.g. tapping from a search box to a body

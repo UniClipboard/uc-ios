@@ -5,6 +5,7 @@ import SwiftUI
 enum SettingsRoute: Hashable {
     case servers
     case serverEdit(index: Int)
+    case keyboard
 
     /// `UC_SETTINGS_ROUTE` env hook — lets screenshot recipes deep-link
     /// past the Settings root since simctl has no synthetic-tap.
@@ -16,6 +17,8 @@ enum SettingsRoute: Hashable {
         case let s where s.hasPrefix("servers/edit/"):
             let idx = Int(s.dropFirst("servers/edit/".count)) ?? 0
             return [.servers, .serverEdit(index: idx)]
+        case "keyboard":
+            return [.keyboard]
         default:
             return []
         }
@@ -25,6 +28,12 @@ enum SettingsRoute: Hashable {
 struct SettingsView: View {
     @Bindable var vm: AppViewModel
     @Binding var path: [SettingsRoute]
+
+    /// Drives the "功能引导" re-view: presents `OnboardingView` in review mode
+    /// over Settings. Seeded from `UC_ONBOARDING_REVIEW=1` so simctl can
+    /// screenshot the review presentation (close button + 末页「完成」).
+    @State private var showOnboarding =
+        ProcessInfo.processInfo.environment["UC_ONBOARDING_REVIEW"] == "1"
 
     private var ssidProvider: CurrentSSIDProvider { vm.ssidProvider }
 
@@ -66,13 +75,11 @@ struct SettingsView: View {
             }
 
             Section {
-                NavigationLink {
-                    KeyboardSetupView(appSettings: $vm.appSettings)
-                } label: {
+                NavigationLink(value: SettingsRoute.keyboard) {
                     Label("键盘与自动同步", systemImage: "keyboard")
                 }
             } footer: {
-                Text("用 UniClip 键盘在任意 App 里打开即自动同步剪贴板；并可在此授权「粘贴自其他 App」。")
+                Text("用 UniClip 键盘在任意 App 里打开即自动同步剪贴板。")
                     .font(.caption)
             }
 
@@ -123,9 +130,17 @@ struct SettingsView: View {
                 } label: {
                     Label("关于", systemImage: "info.circle")
                 }
+                Button {
+                    showOnboarding = true
+                } label: {
+                    Label("功能引导", systemImage: "sparkles")
+                }
             }
         }
         .navigationTitle("设置")
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView(mode: .review) { showOnboarding = false }
+        }
         .navigationDestination(for: SettingsRoute.self) { route in
             switch route {
             case .servers:
@@ -154,6 +169,8 @@ struct SettingsView: View {
                     Text("服务器已不存在")
                         .foregroundStyle(.secondary)
                 }
+            case .keyboard:
+                KeyboardSetupView(appSettings: $vm.appSettings)
             }
         }
     }

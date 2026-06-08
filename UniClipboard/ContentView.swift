@@ -11,6 +11,20 @@ struct ContentView: View {
     /// because simctl can't synthesize taps for screenshot recipes.
     @State private var settingsPath: [SettingsRoute] = SettingsRoute.initialPath()
 
+    /// Set once the user finishes/skips the first-run walkthrough this session.
+    /// Lets `UC_ONBOARDING=1` still force the walkthrough on cold launch (for
+    /// screenshots) while letting the user actually leave it — otherwise the env
+    /// gate re-shows the walkthrough forever and SetupFlow (QR pairing) is never
+    /// reachable.
+    @State private var onboardingDone = false
+
+    /// Drives the post-pairing "解锁更多" enhancements carousel — auto-presented
+    /// once right after the first-run pairing completes, and re-presentable via
+    /// the `UC_ONBOARDING_ENHANCE=1` env hook for screenshots. The persisted
+    /// `enhancementsPromptShown` flag is the "only once, ever" guard; this
+    /// session flag is what actually mounts the sheet.
+    @State private var showEnhancements = false
+
     @Environment(\.scenePhase) private var scenePhase
 
     private static var initialTab: Int {
@@ -18,6 +32,30 @@ struct ContentView: View {
             return 0
         }
         return max(0, min(1, i))
+    }
+
+    /// First-run onboarding gate. Shows the walkthrough only on a truly fresh
+    /// install — no servers configured AND onboarding never completed. The
+    /// `UC_ONBOARDING=1` env hook forces it on regardless so simctl recipes
+    /// can screenshot the flow even after it has been completed once.
+    private var showOnboarding: Bool {
+        if onboardingDone { return false }
+        if ProcessInfo.processInfo.environment["UC_ONBOARDING"] == "1" { return true }
+        return !vm.appSettings.onboardingShown && vm.servers.configs.isEmpty
+    }
+
+    /// Raise the post-pairing enhancements carousel once, just after the
+    /// first-run pairing. Deferred a beat so the SetupFlow `fullScreenCover`
+    /// finishes dismissing and `mainTabs` mounts before we present the sheet —
+    /// stacking a present on the same runloop tick as the cover dismiss + the
+    /// onboarding→tabs branch switch swallows it. Marks the persisted flag at
+    /// present-time so it never pops again.
+    private func presentEnhancementsIfDue() {
+        guard !vm.appSettings.enhancementsPromptShown else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            vm.appSettings.enhancementsPromptShown = true
+            showEnhancements = true
+        }
     }
 
     var body: some View {
@@ -28,7 +66,12 @@ struct ContentView: View {
         let pendingShortcut = ShortcutInbox.shared.pending
 
         return Group {
-            if vm.servers.configs.isEmpty {
+            if showOnboarding {
+                OnboardingView(mode: .firstRun) {
+                    vm.completeOnboarding()
+                    onboardingDone = true
+                }
+            } else if vm.servers.configs.isEmpty {
                 SetupFlowView(vm: vm) {
                     // No-op: ContentView re-renders to TabView once configs is non-empty.
                 }
@@ -98,6 +141,15 @@ struct ContentView: View {
             .tabItem { Label("设置", systemImage: "gearshape.fill") }
             .tag(1)
         }
+        // Post-pairing "解锁更多" carousel (keyboard → share → paste). Full-screen
+        // (not a sheet) so the 教学页 hero bleeds to the status bar Paste-style —
+        // a `.large` sheet keeps a system gap + grabber at the top and can't.
+        // Dismissed via the floating ✕ / 完成 / 稍后. Raised once by
+        // `presentEnhancementsIfDue` after first-run pairing, or by the
+        // `UC_ONBOARDING_ENHANCE` hook below for screenshots.
+        .fullScreenCover(isPresented: $showEnhancements) {
+            OnboardingView(mode: .enhancements) { showEnhancements = false }
+        }
         .task {
             // Unblock pasteboard reads before the engine ticks — the
             // engine's push path reads UIPasteboard via snapshot(), and
@@ -105,13 +157,11 @@ struct ContentView: View {
             // prompt past the Setup flow into the home tab.
             vm.activatePasteboard()
             vm.engine.start()
-            // simctl regression hooks — not feature flags. The engine
-            // already handles push/apply automatically via the 1Hz loop;
-            // these just kick off an immediate first tick so test recipes
-            // don't have to wait the full cadence before screenshotting.
-            // UC_AUTO_SAVE stays a direct call: saving to Documents is a
-            // discrete user action, not part of the auto-sync loop.
+            presentEnhancementsIfDue()
             let env = ProcessInfo.processInfo.environment
+            if env["UC_ONBOARDING_ENHANCE"] == "1" {
+                showEnhancements = true
+            }
             if env["UC_AUTO_PUSH"] == "1" {
                 // Auto-push is opt-in now (default off — the headline push
                 // path is the Home PasteButton). The screenshot recipe wants

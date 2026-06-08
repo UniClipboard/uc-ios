@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Home tab — recent clipboard entries grouped by date.
 ///
@@ -26,6 +27,18 @@ struct HomeView: View {
     @State private var previewItem: ClipboardHistoryItem?
 
     private var engineState: SyncEngine.State { vm.engine.state }
+
+    /// Show the paste-permission hint while fully-automatic push is on (the
+    /// engine reads the pasteboard each tick → iOS「允许粘贴」friction) and the
+    /// user hasn't dismissed it. Setting「从其他 App 粘贴」to「允许」silences it.
+    private var showPasteHint: Bool {
+        vm.appSettings.autoPushDeviceChanges && !vm.appSettings.pastePermissionHintDismissed
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
     private var isExplicitlyRefreshing: Bool { vm.engine.isExplicitlyRefreshing }
 
     /// History rendered in the list, sorted newest-first. The mock data
@@ -49,6 +62,18 @@ struct HomeView: View {
 
     var body: some View {
         listOrEmpty
+            // Paste-permission hint sits above both the list and the empty
+            // state (it's a body-level inset, not a List one), so it shows the
+            // moment auto-push is on regardless of whether history exists yet.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if showPasteHint {
+                    PastePermissionBanner(
+                        onOpenSettings: { openAppSettings() },
+                        onDismiss: { vm.appSettings.pastePermissionHintDismissed = true }
+                    )
+                }
+            }
+            .animation(.snappy, value: showPasteHint)
             .refreshable {
                 await vm.engine.explicitRefresh()
             }
@@ -653,6 +678,49 @@ private struct SavedBanner: View {
         .padding(.vertical, 12)
         .background(.regularMaterial)
         .overlay(alignment: .top) {
+            Divider().opacity(0.4)
+        }
+    }
+}
+
+/// Home hint nudging the user to set「从其他 App 粘贴」to「允许」once they've turned
+/// on fully-automatic push — otherwise iOS prompts「允许粘贴」on every engine
+/// read. Dismissible; the choice persists via `pastePermissionHintDismissed`.
+private struct PastePermissionBanner: View {
+    var onOpenSettings: () -> Void
+    var onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "doc.on.clipboard")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("已开启自动推送")
+                    .font(.footnote.weight(.semibold))
+                Text("把「从其他 App 粘贴」设为「允许」可避免反复弹窗,让同步静默进行。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("打开设置", action: onOpenSettings)
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .padding(.top, 2)
+            }
+            Spacer(minLength: 8)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("关闭")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.regularMaterial)
+        .overlay(alignment: .bottom) {
             Divider().opacity(0.4)
         }
     }

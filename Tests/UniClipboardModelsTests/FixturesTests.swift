@@ -405,6 +405,14 @@ final class FixturesTests: XCTestCase {
             // fixture omits them and decode falls back to true (stock-keyboard
             // feel). Read by the keyboard via the App Group.
             "keyboardSoundFeedback", "keyboardHapticFeedback",
+            // First-run onboarding flag. Always encoded (Bool); fixture omits
+            // it and decode falls back to false (fresh install shows onboarding).
+            "onboardingShown",
+            // Home paste-permission hint dismissal. Always encoded (Bool).
+            "pastePermissionHintDismissed",
+            // Post-pairing enhancements carousel "shown once" flag. Always
+            // encoded (Bool); fixture omits it and decode falls back to false.
+            "enhancementsPromptShown",
         ])
     }
 
