@@ -64,10 +64,6 @@ struct ContentView: View {
                     vm.completeOnboarding()
                     onboardingDone = true
                 }
-            } else if vm.servers.configs.isEmpty {
-                SetupFlowView(vm: vm) {
-                    // No-op: ContentView re-renders once configs is non-empty.
-                }
             } else {
                 mainContent
             }

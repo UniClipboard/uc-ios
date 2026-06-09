@@ -411,11 +411,31 @@ final class AppViewModel {
            last.entry.hash == hash {
             return
         }
+        // Dedup: if the newest entry has the same hash but direction is
+        // .local and we're upgrading to .pushed/.pulled, update in place.
+        if let hash = entry.hash,
+           let last = history.first,
+           last.entry.hash == hash,
+           last.direction == .local,
+           direction != .local {
+            history[0].direction = direction
+            return
+        }
         history.insert(
             ClipboardHistoryItem(entry: entry, timestamp: timestamp, direction: direction),
             at: 0
         )
         trimHistoryAndPruneCache()
+    }
+
+    func updateHistoryDirection(hash: String?, to newDirection: ClipboardHistoryItem.Direction) {
+        guard let hash, !hash.isEmpty else { return }
+        let normalized = hash.uppercased()
+        if let idx = history.firstIndex(where: {
+            $0.entry.hash?.uppercased() == normalized
+        }) {
+            history[idx].direction = newDirection
+        }
     }
 
     /// Merge one server-side `HistoryRecord` (§3.6) into the local

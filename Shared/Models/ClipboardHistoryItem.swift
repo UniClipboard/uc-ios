@@ -14,7 +14,7 @@ import Foundation
 /// a polling toy".
 public struct ClipboardHistoryItem: Identifiable, Hashable, Codable, Sendable {
     public enum Direction: String, Hashable, Codable, Sendable {
-        case pulled, pushed
+        case pulled, pushed, local
     }
 
     /// Stable across encodings — must be `var` (not `let`) so the Codable

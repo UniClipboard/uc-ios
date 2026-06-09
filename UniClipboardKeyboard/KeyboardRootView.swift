@@ -103,7 +103,7 @@ struct KeyboardRootView: View {
                             .rotationEffect(.degrees(switchingServer ? 180 : 0))
                     }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
+                    .frame(height: 34)
                     .liquidGlassCapsule()
                 }
                 .buttonStyle(.plain)
@@ -115,21 +115,21 @@ struct KeyboardRootView: View {
             }
 
             HStack(spacing: 0) {
-                if model.gate == .ok, !model.cards.isEmpty {
+                if model.gate != .needsFullAccess, !model.cards.isEmpty {
                     circleButton(system: "magnifyingglass") {
                         withAnimation(.snappy(duration: 0.22)) { searching = true }
                     }
                     .accessibilityLabel(Text("筛选"))
                 }
                 Spacer(minLength: 0)
-                if model.gate == .ok {
+                if model.gate != .needsFullAccess {
                     syncButton
                         .animation(.snappy(duration: 0.28), value: model.isSyncing)
                         .animation(.snappy(duration: 0.28), value: model.syncFlash)
                 }
             }
         }
-        .frame(height: 36)
+        .frame(height: 38)
     }
 
     /// Top-right control: spinner while syncing, a brief green ✓ / amber !
@@ -203,7 +203,7 @@ struct KeyboardRootView: View {
                 .padding(.trailing, 12)
             }
         }
-        .frame(height: 36)
+        .frame(height: 38)
     }
 
     private var serverTitle: String {
@@ -222,13 +222,7 @@ struct KeyboardRootView: View {
         case .needsFullAccess:
             fullAccessHint
         case .noServer:
-            centered {
-                infoBlock(
-                    system: "server.rack",
-                    title: String(localized: "尚未配置服务器"),
-                    message: String(localized: "请先打开 UniClipboard 主程序添加服务器")
-                )
-            }
+            cardArea
         case .ok:
             cardArea
         }

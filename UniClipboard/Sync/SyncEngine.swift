@@ -369,25 +369,29 @@ final class SyncEngine {
             isTicking = false
             if explicit { isExplicitlyRefreshing = false }
         }
-        guard let vm = viewModel,
-              let server = vm.activeServer else {
+        guard let vm = viewModel else {
+            state = .idle
+            return
+        }
+        // Pasteboard observation runs BEFORE the server guard so local
+        // clipboard changes are recorded even without a configured server.
+        if vm.appSettings.autoPushDeviceChanges {
+            vm.pollPasteboardIfChanged()
+            // Auto-push ON: record any new device clipboard content locally,
+            // regardless of whether a server is configured.
+            if let device = vm.deviceClipboard,
+               let hash = device.hash?.uppercased(),
+               !isHashInRecentHistory(vm: vm, hash: hash) {
+                vm.appendHistory(entry: device, direction: .local)
+            }
+        } else {
+            vm.pollPasteboardDetection()
+        }
+        guard let server = vm.activeServer else {
             state = .idle
             return
         }
         if state == .authFailed || state == .loopDetected { return }
-        // Pasteboard refresh. Two modes:
-        // - Auto-push ON: read content (`pollIfChanged`) so the engine can
-        //   push fresh local copies automatically. This is what fires the
-        //   iOS "Allow Paste" prompt — opt-in only.
-        // - Auto-push OFF (default): only the FREE detection poll, which
-        //   reads `changeCount`/`hasStrings` (no prompt) to surface the
-        //   Home one-tap `PasteButton` hint. Content is read solely on the
-        //   user's explicit tap of that system control.
-        if vm.appSettings.autoPushDeviceChanges {
-            vm.pollPasteboardIfChanged()
-        } else {
-            vm.pollPasteboardDetection()
-        }
         log.debug("tick: explicit=\(explicit, privacy: .public) state=\(String(describing: self.state), privacy: .public) url=\(server.url, privacy: .public) consecutiveFailures=\(self.consecutiveFailures, privacy: .public)")
         // Cross-process re-sync: the Share Extension writes
         // `lastSyncedContentHash` directly into the App Group when it
@@ -638,21 +642,27 @@ final class SyncEngine {
     /// surfaces them. Runs regardless of `autoPushDeviceChanges` — it's the
     /// default push path, not gated by the auto-push opt-in.
     func consentPush(_ snapshot: DeviceClipboardSnapshot) async {
-        guard let vm = viewModel, let server = vm.activeServer else { return }
+        guard let vm = viewModel else { return }
+
+        let entry = snapshot.clipboard
+        // Always record locally first, regardless of server availability.
+        vm.appendHistory(entry: entry, direction: .local)
+        vm.adoptConsentPush(entry)
+
+        guard let server = vm.activeServer else { return }
         if state == .authFailed || state == .loopDetected { return }
         do {
-            guard let entry = try await vm.pushSnapshot(snapshot) else { return }
-            advanceSynced(to: entry.hash)
-            lastAppliedContentHash = entry.hash?.uppercased()
-            vm.appendHistory(entry: entry, direction: .pushed)
-            vm.adoptConsentPush(entry)
-            loopGuard.record(.pushed, hash: entry.hash)
+            guard let pushed = try await vm.pushSnapshot(snapshot) else { return }
+            advanceSynced(to: pushed.hash)
+            lastAppliedContentHash = pushed.hash?.uppercased()
+            vm.updateHistoryDirection(hash: pushed.hash, to: .pushed)
+            loopGuard.record(.pushed, hash: pushed.hash)
             if loopGuard.tripped() { tripLoopBreaker(); return }
             state = .succeeded
             lastSyncedAt = .now
             lastError = nil
             consecutiveFailures = 0
-            Task { await ShareIntentDonation.donateSend(to: server, clipboard: entry) }
+            Task { await ShareIntentDonation.donateSend(to: server, clipboard: pushed) }
         } catch let e as SyncError where e.kind == .authFailed {
             state = .authFailed
             lastError = e
@@ -776,6 +786,11 @@ final class SyncEngine {
             underlying: "auto-sync loop detected — same content alternated apply/push too many times"
         )
         stop()
+    }
+
+    private func isHashInRecentHistory(vm: AppViewModel, hash: String) -> Bool {
+        guard let first = vm.history.first else { return false }
+        return first.entry.hash?.uppercased() == hash
     }
 
     private func hashesEqual(_ a: String?, _ b: String?) -> Bool {

@@ -307,6 +307,16 @@ public final class SettingsStore: @unchecked Sendable {
            last.entry.hash == hash {
             return
         }
+        // Upgrade .local → .pushed/.pulled in place instead of duplicating.
+        if let hash = entry.hash,
+           let last = items.first,
+           last.entry.hash == hash,
+           last.direction == .local,
+           direction != .local {
+            items[0].direction = direction
+            saveHistory(items)
+            return
+        }
         items.insert(
             ClipboardHistoryItem(entry: entry, timestamp: timestamp, direction: direction),
             at: 0

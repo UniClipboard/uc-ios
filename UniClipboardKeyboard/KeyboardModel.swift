@@ -349,21 +349,27 @@ final class KeyboardModel {
 
     private func sync(force: Bool, gen: Int) async {
         let servers = store.loadServers()
-        // Resolve the on-demand server (§5.3) from the current network: our
-        // own NWPathMonitor gives the interface type (no entitlement needed),
-        // the SSID name comes from the App Group (main app writes it) — see
-        // `currentNetworkContext`. Falls back to the manual baseline when no
-        // rule matches.
-        guard let server = servers.effectiveActiveConfig(network: currentNetworkContext()) else {
+        let settings = store.loadAppSettings()
+        soundFeedback = settings.keyboardSoundFeedback
+        hapticFeedback = settings.keyboardHapticFeedback
+
+        // Record local clipboard changes regardless of server availability.
+        recordLocalClipboardIfNew()
+        reloadCards()
+
+        let server = servers.effectiveActiveConfig(network: currentNetworkContext())
+        guard let server else {
             gate = .noServer
+            if force {
+                lastError = String(localized: "尚未配置服务器，请先在主程序中添加")
+                flashSync(.failure)
+            }
+            if gen == syncGeneration { isSyncing = false }
             return
         }
         gate = .ok
         serverLabel = server.displayLabel
-        let settings = store.loadAppSettings()
         let trust = settings.trustInsecureCert
-        soundFeedback = settings.keyboardSoundFeedback
-        hapticFeedback = settings.keyboardHapticFeedback
         ctx = (server, trust)
 
         isSyncing = true
@@ -372,7 +378,7 @@ final class KeyboardModel {
         await pushDeviceClipboardIfNew(store: store, server: server, trust: trust, force: force)
         guard gen == syncGeneration else { return }
         let didPush: Bool = { if case .pushed = pushStatus { return true } else { return false } }()
-        reloadCards()                 // reflect a just-pushed entry at the head
+        reloadCards()
 
         // ---- Downlink: pull the server's latest *metadata* (small JSON) and
         // fold it into the history log if it's new. The payload (image /
@@ -384,19 +390,34 @@ final class KeyboardModel {
             let pulledNew = appendPulledIfNew(latest)
             reloadCards()
             lastError = nil
-            // Confirm a *manual* refresh even with no changes (the user asked
-            // for feedback); an automatic pass (appear / poll) stays quiet
-            // unless it actually moved data, so ✓ doesn't blink on every open.
             if force || didPush || pulledNew { flashSync(.success) }
         } catch {
             guard gen == syncGeneration else { return }
-            // A pull failure shouldn't blow away cards we already have; the
-            // refresh button briefly turns amber instead of a verbose chip.
             lastError = Self.message(for: error)
             flashSync(.failure)
         }
 
         if gen == syncGeneration { isSyncing = false }
+    }
+
+    private func recordLocalClipboardIfNew() {
+        let cc = UIPasteboard.general.changeCount
+        if cc == store.loadLastSyncedChangeCount() { return }
+        guard let snap = PasteboardReader.snapshot(),
+              let hash = snap.clipboard.hash?.uppercased() else {
+            store.saveLastSyncedChangeCount(cc)
+            return
+        }
+        if hash == store.loadLastSyncedHash()?.uppercased() {
+            store.saveLastSyncedChangeCount(cc)
+            return
+        }
+        if store.loadHistory().first?.entry.hash?.uppercased() == hash {
+            store.saveLastSyncedChangeCount(cc)
+            return
+        }
+        store.appendHistory(entry: snap.clipboard, direction: .local)
+        store.saveLastSyncedChangeCount(cc)
     }
 
     private func pushDeviceClipboardIfNew(store: SettingsStore, server: ServerConfig, trust: Bool, force: Bool) async {
