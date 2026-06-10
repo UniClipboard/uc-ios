@@ -641,21 +641,39 @@ final class KeyboardModel {
             guard let name = e.dataName else { return }
             let rawExt = (name as NSString).pathExtension
             let ext = rawExt.isEmpty ? "png" : rawExt.lowercased()
-            fetchThen(card: card, name: name) { [weak self] data in
-                guard let self, !data.isEmpty else { return }
-                UIPasteboard.general.setData(data, forPasteboardType: PasteboardReader.uti(forExt: ext))
-                // Cache the bytes under the hash the upcoming push will
-                // compute, so the app's preview finds them offline.
-                self.store.saveImageData(hash: Clipboard.computeBytesHash(data), data: data)
-                // Surface the copied card at the head (the uplink's
-                // "already at head" dedup then recognizes it), and push
-                // through the normal sync pass. Reading back our own
-                // just-written pasteboard never prompts.
-                self.store.touchHistoryItem(id: card.id)
-                self.flashActed(card.id)
-                self.refresh()
+            // Local-cache-first, mirroring `thumbnail(for:)`. If the card's
+            // thumbnail rendered, the full original bytes are already in the
+            // App Group cache (`ImageData/<hash>.dat`) — copy straight from
+            // there, instantly and offline. Hitting `getFile(name:)` here was
+            // both wasteful (the bytes are already local) and fragile: the
+            // server's `file/<dataName>` is often gone by then, so the fetch
+            // failed and — failure being swallowed — the copy silently did
+            // nothing.
+            if let hash = e.hash, let local = store.loadImageData(hash: hash), !local.isEmpty {
+                copyImageToPasteboard(local, ext: ext, cardID: card.id)
+            } else {
+                // No local bytes (e.g. a server-pulled metadata entry whose
+                // payload was never fetched) — fall back to the server, which
+                // now surfaces fetch failures instead of swallowing them.
+                fetchThen(card: card, name: name) { [weak self] data in
+                    guard let self, !data.isEmpty else { return }
+                    self.copyImageToPasteboard(data, ext: ext, cardID: card.id)
+                }
             }
         }
+    }
+
+    /// Write image bytes to `UIPasteboard.general`, cache them under their
+    /// content hash (so the app's offline preview finds them), surface the
+    /// card at the history head, and push through the normal uplink. Shared by
+    /// the local-cache-hit fast path and the server-fetch fallback in
+    /// `activate`. Reading back our own just-written pasteboard never prompts.
+    private func copyImageToPasteboard(_ data: Data, ext: String, cardID: UUID) {
+        UIPasteboard.general.setData(data, forPasteboardType: PasteboardReader.uti(forExt: ext))
+        store.saveImageData(hash: Clipboard.computeBytesHash(data), data: data)
+        store.touchHistoryItem(id: cardID)
+        flashActed(cardID)
+        refresh()
     }
 
     /// Fetch a payload file by name from the last-synced server, then run
@@ -673,7 +691,10 @@ final class KeyboardModel {
                 self?.lastError = nil
                 body(data)
             } catch {
+                if Task.isCancelled { return }
+                log.error("fetchThen: getFile(name: \(name)) failed — \(error)")
                 self?.lastError = Self.message(for: error)
+                self?.flashSync(.failure)
             }
         }
     }
