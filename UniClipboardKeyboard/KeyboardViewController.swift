@@ -81,12 +81,21 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
 
-        // Keep every layer transparent so the system-drawn keyboard tray
-        // (flat gray pre-iOS 26, Liquid Glass on iOS 26+) shows through. The
-        // controller's own view defaults opaque, and UIHostingController adds
-        // an opaque background of its own — both would hide the system tray
-        // and force us to fake a color that can't match Liquid Glass.
-        view.backgroundColor = .clear
+        // Keep every layer *visually* transparent so the system-drawn keyboard
+        // tray (flat gray pre-iOS 26, Liquid Glass on iOS 26+) shows through.
+        // The controller's own view defaults opaque, and UIHostingController
+        // adds an opaque background of its own — both would hide the system
+        // tray and force us to fake a color that can't match Liquid Glass.
+        //
+        // But NOT alpha-zero: the system ignores touches that land on fully
+        // transparent points of a custom keyboard (documented keyboard-window
+        // behavior; see https://developer.apple.com/forums/thread/702798).
+        // The quiet-chrome top bar is bare glyphs, so most of its hit area is
+        // transparent pixels — with `.clear` here, taps beside the glyph
+        // strokes were silently dropped before SwiftUI ever saw them. A
+        // 0.001-alpha film is invisible over the tray but keeps every point
+        // of the keyboard touch-opaque (same trick as the switcher scrim).
+        view.backgroundColor = UIColor(white: 1, alpha: 0.001)
 
         let root = KeyboardRootView(model: model)
         let host = UIHostingController(rootView: root)

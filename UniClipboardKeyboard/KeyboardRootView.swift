@@ -17,6 +17,12 @@ enum KeyboardLayout {
     static let topBarHeight: CGFloat = 38
     static let topBarVPad: CGFloat = 4
 
+    /// Single horizontal grid for all four bands (top bar, card row, key
+    /// row, globe strip). The bands used to sit on a 12/16/12/16 alternating
+    /// inset, and the 4pt misregistration of their leading edges read as
+    /// "header and cards are separate widgets".
+    static let hMargin: CGFloat = 12
+
     static let cardHeight: CGFloat = 150
     static let cardRowVPad: CGFloat = 4
 
@@ -97,11 +103,10 @@ struct KeyboardRootView: View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 topBar
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, KeyboardLayout.hMargin)
                     // Symmetric, snug vertical insets so the bar hugs the card
-                    // row beneath it — the bar already frames the ~30pt capsule
-                    // / 34pt circle buttons, so anything larger reads as a
-                    // loose, empty band between the three stacked sections.
+                    // row beneath it — anything larger reads as a loose, empty
+                    // band between the three stacked sections.
                     .padding(.vertical, KeyboardLayout.topBarVPad)
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -141,7 +146,9 @@ struct KeyboardRootView: View {
 
     private var serverBar: some View {
         ZStack {
-            // Centered server name (tap → inline switcher).
+            // Centered server name (tap → inline switcher). Bare text +
+            // chevron — no resting surface (see the quiet-chrome note on
+            // ChromePressStyle); the chevron carries the tap affordance.
             if model.gate == .ok {
                 Button { openSwitcher() } label: {
                     HStack(spacing: 4) {
@@ -156,9 +163,8 @@ struct KeyboardRootView: View {
                     }
                     .padding(.horizontal, 10)
                     .frame(height: 34)
-                    .flatSurface(in: Capsule(style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ChromePressStyle(shape: Capsule(style: .continuous), hitOutset: 5))
                 .accessibilityLabel(Text("切换服务器"))
             } else {
                 Text(verbatim: "UniClip")
@@ -194,21 +200,20 @@ struct KeyboardRootView: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 34, height: 34)
-                .flatSurface(in: Circle())
                 .transition(.opacity)
         } else if let flash = model.syncFlash {
-            Image(systemName: flash == .success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(flash == .success ? Color.green : Color.orange)
-                .frame(width: 34, height: 34)
-                .flatSurface(in: Circle())
-                .contentShape(Circle())
-                .onTapGesture {
-                    model.keyFeedback()
-                    model.refresh(force: true)
-                }
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
-                .accessibilityLabel(Text(flash == .success ? "同步成功" : "同步失败"))
+            Button {
+                model.keyFeedback()
+                model.refresh(force: true)
+            } label: {
+                Image(systemName: flash == .success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(flash == .success ? Color.green : Color.orange)
+                    .frame(width: 34, height: 34)
+            }
+            .buttonStyle(ChromePressStyle(shape: Circle(), hitOutset: 5))
+            .transition(.scale(scale: 0.6).combined(with: .opacity))
+            .accessibilityLabel(Text(flash == .success ? "同步成功" : "同步失败"))
         } else {
             circleButton(system: "arrow.clockwise") {
                 model.refresh(force: true)
@@ -220,7 +225,9 @@ struct KeyboardRootView: View {
 
     private var filterBar: some View {
         HStack(spacing: 8) {
-            circleButton(system: "xmark") {
+            // 14pt: the ✕ sits beside footnote chip labels — the default 16
+            // read heavier than the chips and pulled focus.
+            circleButton(system: "xmark", size: 14) {
                 withAnimation(.snappy(duration: 0.22)) {
                     searching = false
                     filter = .all
@@ -228,33 +235,38 @@ struct KeyboardRootView: View {
             }
             .accessibilityLabel(Text("关闭筛选"))
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(Filter.allCases) { f in
-                        let isOn = f == filter
-                        Button {
-                            model.keyFeedback()
-                            withAnimation(.snappy(duration: 0.2)) { filter = f }
-                        } label: {
-                            Text(f.title)
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(isOn ? Color(.systemBackground) : Color.primary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background {
-                                    if isOn {
-                                        Capsule().fill(Color.accentColor)
-                                    } else {
-                                        // Flat, not material — see flatSurface.
-                                        Capsule().fill(keyboardSurfaceColor)
-                                    }
+            // Plain HStack, NOT a ScrollView: four fixed chips always fit
+            // (even at 320pt width), and on iOS 26 a scrollable ScrollView
+            // carries a scroll edge effect — a backdrop layer that the glass
+            // tray renders as a translucent band across the whole viewport
+            // (glass can't sample glass; same artifact family as glassEffect).
+            HStack(spacing: 6) {
+                ForEach(Filter.allCases) { f in
+                    let isOn = f == filter
+                    Button {
+                        model.keyFeedback()
+                        withAnimation(.snappy(duration: 0.2)) { filter = f }
+                    } label: {
+                        Text(f.title)
+                            .font(.footnote.weight(.semibold))
+                            // Selected chip is a tinted capsule, so the label
+                            // is fixed white (accentColor resolves to system
+                            // blue here — see returnKey). Unselected chips are
+                            // bare chrome in primary, QuickType-style — the
+                            // tray sits too close to .secondary for legibility.
+                            .foregroundStyle(isOn ? .white : Color.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background {
+                                if isOn {
+                                    Capsule().fill(Color.accentColor)
                                 }
-                        }
-                        .buttonStyle(.plain)
+                            }
                     }
+                    .buttonStyle(ChromePressStyle(shape: Capsule(style: .continuous)))
                 }
-                .padding(.trailing, 12)
             }
+            Spacer(minLength: 0)
         }
         .frame(height: KeyboardLayout.topBarHeight)
     }
@@ -294,9 +306,15 @@ struct KeyboardRootView: View {
                         CardView(model: model, card: card)
                     }
                 }
-                .padding(.horizontal, 16)
+                .scrollTargetLayout()
                 .padding(.vertical, KeyboardLayout.cardRowVPad)
             }
+            // contentMargins (not padding inside the stack) keeps the resting
+            // first card on the shared hMargin grid while still letting cards
+            // bleed to the screen edge mid-scroll.
+            .contentMargins(.horizontal, KeyboardLayout.hMargin, for: .scrollContent)
+            .scrollTargetBehavior(.viewAligned)
+            .keyboardScrollEdgeEffectHidden()
             .frame(maxHeight: .infinity)
         } else if model.isSyncing {
             centered {
@@ -424,7 +442,7 @@ struct KeyboardRootView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(height: KeyboardLayout.keyRowHeight)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, KeyboardLayout.hMargin)
         .padding(.top, KeyboardLayout.keyRowTopPad)
         // Breathing room below the keys. On iPad the system parks its
         // input-switch / dismiss controls right under the keyboard frame, and
@@ -439,13 +457,16 @@ struct KeyboardRootView: View {
             model.keyFeedback()
             model.insertText(" ")
         } label: {
-            Color.clear
+            // Labeled like the system space bar — a blank white cap next to
+            // the labeled 发送 key read as a broken placeholder.
+            Text("空格")
+                .font(.callout)
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .flatKey()
                 .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text("空格"))
     }
 
     private var returnKey: some View {
@@ -490,7 +511,7 @@ struct KeyboardRootView: View {
                     .accessibilityLabel(Text("切换键盘"))
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, KeyboardLayout.hMargin)
             // The fixed frame comes FIRST, paddings after — the old order
             // (paddings inside a 30pt frame) silently overflowed the frame by
             // ±4pt, letting the globe creep up toward the key row.
@@ -557,22 +578,21 @@ struct KeyboardRootView: View {
         .buttonStyle(.plain)
     }
 
-    /// Flat circular button for the top bar — shares the cap-colored surface
-    /// of the centered server capsule so 🔍 / ⟳ / ✕ sit as a balanced set
-    /// instead of bare floating glyphs.
-    private func circleButton(system: String, action: @escaping () -> Void) -> some View {
+    /// Bare circular button for the top bar — same chrome grammar as the
+    /// globe key in the bottom strip (secondary glyph, no resting surface,
+    /// highlight only while pressed), so 🔍 / ⟳ / ✕ read as tray chrome
+    /// rather than competing with the card surfaces below.
+    private func circleButton(system: String, size: CGFloat = 16, action: @escaping () -> Void) -> some View {
         Button {
             model.keyFeedback()
             action()
         } label: {
             Image(systemName: system)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
+                .font(.system(size: size, weight: .medium))
+                .foregroundStyle(.secondary)
                 .frame(width: 34, height: 34)
-                .flatSurface(in: Circle())
-                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChromePressStyle(shape: Circle(), hitOutset: 5))
     }
 
     private func centered<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -830,6 +850,34 @@ private struct CardThumbnail: View {
     }
 }
 
+// MARK: - Chrome press style
+
+/// Quiet-chrome press feedback. The keyboard's chrome (top bar, globe strip)
+/// carries **no resting surface** — bare glyphs and text sit directly on the
+/// system tray, exactly like the system keyboard's QuickType bar and globe
+/// key. Surfaces are reserved for *content* (cards) and *keys* (caps); giving
+/// chrome its own opaque islands split the header off from the card row as a
+/// second, sparser surface band. A soft highlight that exists only while
+/// pressed keeps the tap affordance without re-introducing that band.
+private struct ChromePressStyle<S: InsettableShape>: ButtonStyle {
+    let shape: S
+
+    /// Extra hit-test halo beyond the visual bounds. Top-bar controls draw at
+    /// 34pt for visual rhythm, but HIG wants ≥44pt targets — and with no
+    /// resting surface the eye aims at the ~14pt glyph, so finger scatter is
+    /// wider than it was against a filled circle. Only the hit shape grows;
+    /// the press highlight stays at the drawn size. The top-bar band is 46pt
+    /// tall (4+38+4), so a 44pt hit circle still lands inside the keyboard.
+    var hitOutset: CGFloat = 0
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(shape.fill(Color.primary.opacity(configuration.isPressed ? 0.08 : 0)))
+            .contentShape(shape.inset(by: -hitOutset))
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Flat surface helpers
 
 /// The keyboard deliberately carries **no Liquid Glass and no material
@@ -837,9 +885,11 @@ private struct CardThumbnail: View {
 /// is already a system blur — Liquid Glass on iOS 26+ — and glass cannot
 /// sample other glass: `glassEffect` elements hosted here rendered a
 /// translucent backdrop band around the top bar plus a hairline where the
-/// band ended, which read as "the header occludes the cards". Every surface
-/// is therefore a flat opaque fill — the same treatment the system keyboard
-/// gives its own key caps inside the blurred tray.
+/// band ended, which read as "the header occludes the cards". The surfaces
+/// we do draw — cards, key caps, the switcher panel — are flat opaque fills,
+/// the same treatment the system keyboard gives its own key caps inside the
+/// blurred tray; chrome (top bar, globe strip) draws no resting surface at
+/// all (see ChromePressStyle).
 private extension View {
     /// Flat, opaque surface in the given shape — the keyboard's only
     /// surface treatment (white on light, mid-gray on dark).
@@ -856,6 +906,20 @@ private extension View {
     /// and key caps read as one continuous family on the tray.
     func flatCard() -> some View {
         flatSurface(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    /// iOS 26 attaches a scroll edge effect — a backdrop layer — to
+    /// scrollable ScrollViews. Hosted on the keyboard's glass tray that
+    /// backdrop degenerates into the translucent-band artifact (glass can't
+    /// sample glass — same family as glassEffect), so the keyboard hides it
+    /// on every ScrollView it keeps.
+    @ViewBuilder
+    func keyboardScrollEdgeEffectHidden() -> some View {
+        if #available(iOS 26, *) {
+            scrollEdgeEffectHidden(true)
+        } else {
+            self
+        }
     }
 }
 
