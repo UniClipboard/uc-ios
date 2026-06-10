@@ -1,8 +1,60 @@
 import SwiftUI
 import UIKit
 
+/// Single source of truth for the keyboard's vertical metrics. The
+/// controller's height constraint is **computed** from these
+/// (`contentHeight` / `stripBandHeight`), so a tweak here can no longer
+/// drift out of sync with a hand-summed constant — exactly that drift
+/// (top bar 36 → 38 without touching the controller's 252) once starved the
+/// card row by 2pt, and the clipped card edges read as faint "divider lines"
+/// above/below the cards and as the header covering them.
+enum KeyboardLayout {
+    /// iPad gets extra breathing room at the bottom: the input-switch /
+    /// dismiss controls sit right under the keyboard frame there, and a
+    /// flush key row makes them an easy mis-tap.
+    static let isPad = UIDevice.current.userInterfaceIdiom == .pad
+
+    static let topBarHeight: CGFloat = 38
+    static let topBarVPad: CGFloat = 4
+
+    static let cardHeight: CGFloat = 150
+    static let cardRowVPad: CGFloat = 4
+
+    static let keyRowHeight: CGFloat = 46
+    static let keyRowTopPad: CGFloat = 4
+    static let keyRowBottomPad: CGFloat = isPad ? 14 : 4
+
+    static let globeSize: CGFloat = isPad ? 34 : 28
+    static let stripHeight: CGFloat = isPad ? 34 : 30
+    static let stripTopPad: CGFloat = isPad ? 6 : 2
+    static let stripBottomPad: CGFloat = isPad ? 12 : 8
+
+    /// Keyboard height without the globe strip. The middle band resolves to
+    /// exactly `cardHeight + 2 × cardRowVPad`, so the card row is never
+    /// clipped and never floats.
+    static var contentHeight: CGFloat {
+        topBarHeight + topBarVPad * 2
+            + cardHeight + cardRowVPad * 2
+            + keyRowTopPad + keyRowHeight + keyRowBottomPad
+    }
+
+    /// Extra band added when iOS wants an input-mode switch key.
+    static var stripBandHeight: CGFloat {
+        stripTopPad + stripHeight + stripBottomPad
+    }
+}
+
+/// Solid cap/card surface — a shade lighter than the keyboard tray in both
+/// schemes (white on light, mid-gray on dark). Shared by the key caps and
+/// the clipboard cards so all opaque surfaces on the tray read as one family.
+private let keyboardSurfaceColor = Color(uiColor: UIColor { trait in
+    trait.userInterfaceStyle == .dark
+        ? UIColor(white: 0.34, alpha: 1.0)
+        : UIColor.white
+})
+
 /// The UniClip keyboard — a Paste-style hybrid: a top bar (🔍 + current
-/// server), a horizontally-scrolling row of Liquid-Glass clipboard cards, and
+/// server), a horizontally-scrolling row of flat clipboard cards, and
 /// a real key row (space / ⌫ / return) so light editing never forces a trip
 /// back to the system keyboard. Tapping a card inserts its text inline
 /// (downlink) or fetches + copies an image; a background pass auto-pushes
@@ -47,10 +99,10 @@ struct KeyboardRootView: View {
                 topBar
                     .padding(.horizontal, 12)
                     // Symmetric, snug vertical insets so the bar hugs the card
-                    // row beneath it — the 36pt bar already frames the ~30pt
-                    // capsule / 34pt circle buttons, so anything larger reads as
-                    // a loose, empty band between the three stacked sections.
-                    .padding(.vertical, 4)
+                    // row beneath it — the bar already frames the ~30pt capsule
+                    // / 34pt circle buttons, so anything larger reads as a
+                    // loose, empty band between the three stacked sections.
+                    .padding(.vertical, KeyboardLayout.topBarVPad)
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 keyRow
@@ -104,7 +156,7 @@ struct KeyboardRootView: View {
                     }
                     .padding(.horizontal, 10)
                     .frame(height: 34)
-                    .liquidGlassCapsule()
+                    .flatSurface(in: Capsule(style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("切换服务器"))
@@ -129,7 +181,7 @@ struct KeyboardRootView: View {
                 }
             }
         }
-        .frame(height: 38)
+        .frame(height: KeyboardLayout.topBarHeight)
     }
 
     /// Top-right control: spinner while syncing, a brief green ✓ / amber !
@@ -142,14 +194,14 @@ struct KeyboardRootView: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 34, height: 34)
-                .liquidGlassCircle()
+                .flatSurface(in: Circle())
                 .transition(.opacity)
         } else if let flash = model.syncFlash {
             Image(systemName: flash == .success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(flash == .success ? Color.green : Color.orange)
                 .frame(width: 34, height: 34)
-                .liquidGlassCircle()
+                .flatSurface(in: Circle())
                 .contentShape(Circle())
                 .onTapGesture {
                     model.keyFeedback()
@@ -193,7 +245,8 @@ struct KeyboardRootView: View {
                                     if isOn {
                                         Capsule().fill(Color.accentColor)
                                     } else {
-                                        Capsule().fill(.regularMaterial)
+                                        // Flat, not material — see flatSurface.
+                                        Capsule().fill(keyboardSurfaceColor)
                                     }
                                 }
                         }
@@ -203,7 +256,7 @@ struct KeyboardRootView: View {
                 .padding(.trailing, 12)
             }
         }
-        .frame(height: 38)
+        .frame(height: KeyboardLayout.topBarHeight)
     }
 
     private var serverTitle: String {
@@ -242,7 +295,7 @@ struct KeyboardRootView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 4)
+                .padding(.vertical, KeyboardLayout.cardRowVPad)
             }
             .frame(maxHeight: .infinity)
         } else if model.isSyncing {
@@ -342,7 +395,15 @@ struct KeyboardRootView: View {
             }
             .padding(.vertical, 6)
             .frame(maxWidth: 260)
-            .liquidGlassCard()
+            // Opaque panel + shadow for elevation (no glass/material — see
+            // flatSurface); the hairline keeps it separated in dark mode
+            // where the shadow alone is too weak.
+            .flatCard()
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08))
+            )
+            .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
             // Drop below the top bar so it reads as a dropdown from the
             // server-name capsule rather than overlapping it.
             .padding(.top, 50)
@@ -362,9 +423,15 @@ struct KeyboardRootView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .frame(height: 46)
+        .frame(height: KeyboardLayout.keyRowHeight)
         .padding(.horizontal, 12)
-        .padding(.top, 4)
+        .padding(.top, KeyboardLayout.keyRowTopPad)
+        // Breathing room below the keys. On iPad the system parks its
+        // input-switch / dismiss controls right under the keyboard frame, and
+        // a flush key row made them an easy mis-tap — hence the wider inset
+        // there. On iPhone a slim gap to the globe strip / bottom edge is
+        // enough.
+        .padding(.bottom, KeyboardLayout.keyRowBottomPad)
     }
 
     private var spaceKey: some View {
@@ -419,16 +486,19 @@ struct KeyboardRootView: View {
         // instead of leaving a tall empty band above the home indicator.
         if model.needsInputModeSwitchKey {
             HStack(spacing: 0) {
-                glyphButton(system: "globe", size: 28) { model.advanceInputMode() }
+                glyphButton(system: "globe", size: KeyboardLayout.globeSize) { model.advanceInputMode() }
                     .accessibilityLabel(Text("切换键盘"))
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 2)
+            // The fixed frame comes FIRST, paddings after — the old order
+            // (paddings inside a 30pt frame) silently overflowed the frame by
+            // ±4pt, letting the globe creep up toward the key row.
+            .frame(height: KeyboardLayout.stripHeight)
+            .padding(.top, KeyboardLayout.stripTopPad)
             // Keep a little breathing room above the home indicator — flush
             // against the bottom edge reads as cramped.
-            .padding(.bottom, 8)
-            .frame(height: 30)
+            .padding(.bottom, KeyboardLayout.stripBottomPad)
         }
     }
 
@@ -479,7 +549,7 @@ struct KeyboardRootView: View {
             action()
         } label: {
             Image(systemName: system)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: KeyboardLayout.isPad ? 19 : 16, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: size, height: size)
                 .contentShape(Rectangle())
@@ -487,9 +557,9 @@ struct KeyboardRootView: View {
         .buttonStyle(.plain)
     }
 
-    /// Glass circular button for the top bar — shares the Liquid Glass
-    /// language of the centered server capsule so 🔍 / ⟳ / ✕ sit as a
-    /// balanced set instead of bare floating glyphs.
+    /// Flat circular button for the top bar — shares the cap-colored surface
+    /// of the centered server capsule so 🔍 / ⟳ / ✕ sit as a balanced set
+    /// instead of bare floating glyphs.
     private func circleButton(system: String, action: @escaping () -> Void) -> some View {
         Button {
             model.keyFeedback()
@@ -499,7 +569,7 @@ struct KeyboardRootView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 34, height: 34)
-                .liquidGlassCircle()
+                .flatSurface(in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -592,8 +662,14 @@ private struct CardView: View {
                 content
             }
             .padding(12)
-            .frame(width: 152, height: 150, alignment: .topLeading)
-            .liquidGlassCard()
+            .frame(width: 152, height: KeyboardLayout.cardHeight, alignment: .topLeading)
+            // Deliberately NOT Liquid Glass: cards are *content* surfaces
+            // sitting directly on the system keyboard tray, which is itself
+            // glass on iOS 26+ — and glass cannot sample other glass, so
+            // stacking them rendered noisy edges that read as faint divider
+            // lines. A solid cap-colored fill keeps the card row and the key
+            // caps reading as one continuous family on the tray.
+            .flatCard()
             .overlay(alignment: .center) {
                 if didAct { actedOverlay }
             }
@@ -660,7 +736,10 @@ private struct CardView: View {
 
     private var actedOverlay: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial)
+            // Flat frost, not material — the keyboard avoids backdrop-effect
+            // surfaces entirely (see the flat-surface helpers note).
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(keyboardSurfaceColor.opacity(0.92))
             Label(actedLabel, systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.green)
@@ -751,61 +830,32 @@ private struct CardThumbnail: View {
     }
 }
 
-// MARK: - Liquid Glass helpers
+// MARK: - Flat surface helpers
 
+/// The keyboard deliberately carries **no Liquid Glass and no material
+/// surfaces of its own**. The tray behind us (`UIInputView.Style.keyboard`)
+/// is already a system blur — Liquid Glass on iOS 26+ — and glass cannot
+/// sample other glass: `glassEffect` elements hosted here rendered a
+/// translucent backdrop band around the top bar plus a hairline where the
+/// band ended, which read as "the header occludes the cards". Every surface
+/// is therefore a flat opaque fill — the same treatment the system keyboard
+/// gives its own key caps inside the blurred tray.
 private extension View {
-    @ViewBuilder
-    func liquidGlassCard() -> some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-        } else {
-            self
-                .background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.06)))
-        }
+    /// Flat, opaque surface in the given shape — the keyboard's only
+    /// surface treatment (white on light, mid-gray on dark).
+    func flatSurface<S: Shape>(in shape: S) -> some View {
+        background(keyboardSurfaceColor, in: shape)
     }
 
-    @ViewBuilder
-    func liquidGlassCapsule() -> some View {
-        let shape = Capsule(style: .continuous)
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-        } else {
-            self
-                .background(.ultraThinMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.06)))
-        }
-    }
-
-    @ViewBuilder
-    func liquidGlassCircle() -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: Circle())
-        } else {
-            self
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.08)))
-        }
-    }
-
-    /// Flat, opaque key cap for the space / ⌫ keys. Deliberately NOT Liquid
-    /// Glass — the reflective glass read oddly on tappable keys. A solid fill
-    /// that sits a shade lighter than the keyboard tray in both schemes
-    /// (white on light, mid-gray on dark), with a hairline edge so it still
-    /// reads as a raised key.
-    @ViewBuilder
+    /// Key cap for the space / ⌫ keys.
     func flatKey() -> some View {
-        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
-        self
-            .background(
-                Color(uiColor: UIColor { trait in
-                    trait.userInterfaceStyle == .dark
-                        ? UIColor(white: 0.34, alpha: 1.0)
-                        : UIColor.white
-                }),
-                in: shape
-            )
+        flatSurface(in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    /// Clipboard-card / panel surface — same fill, larger radius, so cards
+    /// and key caps read as one continuous family on the tray.
+    func flatCard() -> some View {
+        flatSurface(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -814,13 +864,13 @@ private extension View {
 #if DEBUG
 #Preview("Keyboard — 卡片流") {
     KeyboardRootView(model: .previewReady())
-        .frame(height: 310)
+        .frame(height: KeyboardLayout.contentHeight + KeyboardLayout.stripBandHeight)
         .background(Color(.systemGray5))
 }
 
 #Preview("Keyboard — 空状态") {
     KeyboardRootView(model: .previewEmpty())
-        .frame(height: 310)
+        .frame(height: KeyboardLayout.contentHeight + KeyboardLayout.stripBandHeight)
         .background(Color(.systemGray5))
 }
 #endif

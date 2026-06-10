@@ -205,7 +205,7 @@ If two distinct Chinese strings collide on a single English translation (e.g., t
 
 ## Design language — Liquid Glass tokens
 
-The app targets a Paste-app-inspired visual language built on iOS 26 Liquid Glass. Every interactive surface follows a small set of reusable tokens defined in `UniClipboard/Views/LiquidGlassModifiers.swift`. The keyboard extension keeps a `private` duplicate (it compiles from a separate target that cannot link `UniClipboard/Views/`).
+The app targets a Paste-app-inspired visual language built on iOS 26 Liquid Glass. Every interactive surface follows a small set of reusable tokens defined in `UniClipboard/Views/LiquidGlassModifiers.swift`. **Exception: the keyboard extension uses no Liquid Glass and no materials at all.** Its tray (`UIInputView.Style.keyboard`) is already a system blur — glass on iOS 26+ — and glass cannot sample other glass: `glassEffect`/material elements hosted inside the keyboard render a translucent backdrop band + hairline artifact (observed on iOS 26/27 as "the header occludes the card row"). All keyboard surfaces go through the flat `flatSurface(in:)` helpers in `KeyboardRootView.swift`; don't reintroduce glass or materials there. Keyboard vertical metrics live in the `KeyboardLayout` enum — the controller's height constraint is computed from it, never hand-summed.
 
 ### Shape tokens
 

@@ -27,18 +27,18 @@ final class KeyboardViewController: UIInputViewController {
     /// Custom keyboard height, sized to *hug* its content so the card row sits
     /// snug between the top bar and the key row instead of floating in a tall
     /// frame. The Paste-style layout stacks a branded/search top bar, a row of
-    /// 150pt clipboard cards, and the space/⌫/return key row — that's
-    /// `contentHeight`. The globe strip is added only when iOS needs an
+    /// clipboard cards, and the space/⌫/return key row — that's
+    /// `KeyboardLayout.contentHeight`, **computed from the same constants the
+    /// SwiftUI layout consumes** (a hand-summed constant here once lagged a
+    /// 2pt top-bar change and clipped the card row into looking like it had
+    /// divider lines). The globe strip is added only when iOS needs an
     /// input-mode switch key (see `viewDidAppear`); without it the strip
     /// collapses and the keyboard shrinks by the same band, rather than letting
     /// the freed space float the cards up off the keys. Priority 999 (not
     /// required) so it can never conflict with the system-imposed constraints
     /// on the input view.
-    private static let contentHeight: CGFloat = 252      // top bar (44) + 150pt card row (158) + key row (50)
-    private static let bottomStripHeight: CGFloat = 40   // globe strip: 2 top + 30 frame + 8 bottom
-
     private lazy var heightConstraint: NSLayoutConstraint = {
-        let c = view.heightAnchor.constraint(equalToConstant: Self.contentHeight)
+        let c = view.heightAnchor.constraint(equalToConstant: KeyboardLayout.contentHeight)
         c.priority = UILayoutPriority(999)
         return c
     }()
@@ -114,8 +114,8 @@ final class KeyboardViewController: UIInputViewController {
         // single-keyboard install doesn't leave the freed space floating the
         // card row up off the keys.
         heightConstraint.constant = needsInputModeSwitchKey
-            ? Self.contentHeight + Self.bottomStripHeight
-            : Self.contentHeight
+            ? KeyboardLayout.contentHeight + KeyboardLayout.stripBandHeight
+            : KeyboardLayout.contentHeight
         heightConstraint.isActive = true
         model.setReturnKeyType(textDocumentProxy.returnKeyType)
         model.onAppear()
