@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.0 (9) — 2026-06-10
+
+### New Features
+
+- **First-run onboarding walkthrough** — guided feature tour plus step-by-step
+  setup sheets for the custom keyboard, share extension, and paste permission,
+  re-viewable anytime via Settings → 功能引导.
+- **Paste-style two-column card grid** on the Home page, with multi-select,
+  batch share/delete, and a search button that liquid-morphs into the search
+  field.
+- **Rich URL link cards** — text entries that are links now render with an
+  Open Graph preview image and title.
+- **Immersive image cards** with a checkerboard letterbox background, backed by
+  a new memory + disk thumbnail cache shared with the keyboard extension.
+- **Local clipboard history** — history is now recorded even with no server
+  configured or reachable, so you keep a timeline before pairing a backend.
+
+### Bug Fixes
+
+- Unified file/image/text hashing to content-only SHA-256 and reworked
+  history re-apply so tapping an entry re-syncs it to other devices.
+- Removed Liquid Glass from inside the keyboard tray to fix the translucent
+  band / hairline artifact; tray height now derives from `KeyboardLayout`.
+- Fixed keyboard top-bar taps being intercepted by the quiet-chrome header.
+- Keyboard image-card copy now reads the local cache before refetching, and
+  resolved a keyboard/app watermark coordination loop that echoed entries.
+
 ## 1.0 (8) — 2026-06-08
 
 ### New Features
