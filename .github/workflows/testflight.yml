@@ -1,0 +1,147 @@
+# Archive the iOS app and upload it to App Store Connect (TestFlight).
+#
+# Triggers:
+#   - push of a tag matching v* (e.g. v1.0-b10)
+#   - manual run (workflow_dispatch), with an optional build-number override
+#
+# Required repository secrets:
+#   ASC_API_KEY_ID        App Store Connect API key ID (e.g. 2X9R4HXF34)
+#   ASC_API_ISSUER_ID     App Store Connect API issuer ID (UUID)
+#   ASC_API_KEY_P8        Base64 of the AuthKey_<keyid>.p8 file
+#                         (key needs the App Manager role so xcodebuild can
+#                         manage signing assets and upload the build)
+#   DIST_CERT_P12_BASE64  Base64 of an Apple Distribution certificate + private
+#                         key exported as .p12
+#   DIST_CERT_PASSWORD    Password of that .p12
+#
+# Versioning: MARKETING_VERSION / CURRENT_PROJECT_VERSION come from the
+# committed pbxproj (the repo bumps them before tagging). ExportOptions sets
+# manageAppVersionAndBuildNumber=true, so Xcode bumps the build number at
+# upload time if it would collide with one already on App Store Connect.
+
+name: TestFlight
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Override CURRENT_PROJECT_VERSION (leave empty to use the value committed in the project)"
+        required: false
+        type: string
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      ARCHIVE_PATH: ${{ runner.temp }}/UniClipboard.xcarchive
+      ASC_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+      KEYCHAIN_PATH: ${{ runner.temp }}/ci.keychain-db
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode 26
+        run: |
+          XCODE_APP="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Run model round-trip tests
+        run: swift test
+
+      - name: Install signing certificate
+        env:
+          DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+          DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/dist.p12"
+          echo -n "$DIST_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$DIST_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          rm "$CERT_PATH"
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: echo -n "$ASC_API_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
+
+      - name: Archive
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          EXTRA_SETTINGS=()
+          if [ -n "$BUILD_NUMBER" ]; then
+            EXTRA_SETTINGS+=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
+          fi
+          xcodebuild archive \
+            -project UniClipboard.xcodeproj \
+            -scheme UniClipboard \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_API_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_API_ISSUER_ID" \
+            "${EXTRA_SETTINGS[@]}"
+
+      - name: Upload dSYMs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dSYMs-${{ github.ref_name }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/UniClipboard.xcarchive/dSYMs
+          if-no-files-found: error
+
+      - name: Export and upload to App Store Connect
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>teamID</key>
+            <string>8XG39X5CL8</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_API_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
+
+      - name: Clean up keychain and API key
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          rm -f "$ASC_KEY_PATH"
