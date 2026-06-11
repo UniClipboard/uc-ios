@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 
 /// Fixed-size card for a two-column clipboard grid (Paste-app style).
-/// Width is determined by the enclosing grid column; height is pinned to 180pt.
+/// Width is determined by the enclosing grid column; height matches the width
+/// so every card renders as a 1:1 square.
 ///
 /// Image cards use an immersive layout: the image fills the card height,
 /// letterboxed horizontally with a checkerboard grid in the margins.
@@ -16,8 +17,6 @@ struct ClipboardCard: View {
     var urlMetadata: URLCardMetadata? = nil
     var isLoading: Bool = false
 
-    @ScaledMetric private var cardHeight: CGFloat = 180
-
     var body: some View {
         Group {
             switch item.entry.displayKind {
@@ -30,7 +29,9 @@ struct ClipboardCard: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: cardHeight)
+        // 1:1 square — height tracks the grid column width instead of a fixed
+        // point value, so two-column cards stay square on any device/orientation.
+        .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         // Opaque elevated surface — content cards must not use Liquid Glass.
         // secondarySystemGroupedBackground is the system color designed to sit
@@ -145,54 +146,57 @@ struct ClipboardCard: View {
 
     // MARK: - Immersive URL card
 
-    private var ogImageHeight: CGFloat { cardHeight * 3 / 5 }
-
     private var urlCardBody: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                if let ogImage = urlMetadata?.ogImage {
-                    Color.clear.overlay {
-                        Image(uiImage: ogImage)
-                            .resizable()
-                            .scaledToFill()
+        // OG image fills the top 3/5 of the live card height; title + URL fill
+        // the bottom 2/5. Read the height from geometry since the card is now
+        // sized by aspect ratio rather than a fixed point height.
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                ZStack {
+                    if let ogImage = urlMetadata?.ogImage {
+                        Color.clear.overlay {
+                            Image(uiImage: ogImage)
+                                .resizable()
+                                .scaledToFill()
+                        }
+                        .clipped()
+                    } else {
+                        urlPlaceholder
                     }
-                    .clipped()
-                } else {
-                    urlPlaceholder
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [.black.opacity(0.45), .clear],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        .frame(height: 36)
+                        Spacer(minLength: 0)
+                    }
+                    VStack {
+                        headerRow(style: .overlay)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(10)
                 }
-                VStack(spacing: 0) {
-                    LinearGradient(
-                        colors: [.black.opacity(0.45), .clear],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                    .frame(height: 36)
-                    Spacer(minLength: 0)
-                }
-                VStack {
-                    headerRow(style: .overlay)
-                    Spacer(minLength: 0)
-                }
-                .padding(10)
-            }
-            .frame(height: ogImageHeight)
-            .clipped()
+                .frame(height: proxy.size.height * 3 / 5)
+                .clipped()
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(urlMetadata?.title ?? urlDomain)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(item.entry.urlWithoutScheme)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-                bottomRow(style: .normal)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(urlMetadata?.title ?? urlDomain)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(item.entry.urlWithoutScheme)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    bottomRow(style: .normal)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
