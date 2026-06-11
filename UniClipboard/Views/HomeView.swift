@@ -208,6 +208,8 @@ struct HomeView: View {
                     } label: {
                         Text("选择")
                             .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .frame(height: 52)
                             .padding(.horizontal, 20)
                             .liquidGlassCapsule(interactive: true)
@@ -252,6 +254,8 @@ struct HomeView: View {
                     } label: {
                         Text(allDisplayedSelected ? "取消全选" : "全选")
                             .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .frame(height: 52)
                             .padding(.horizontal, 20)
                             .liquidGlassCapsule(interactive: true)
@@ -262,6 +266,8 @@ struct HomeView: View {
                     } label: {
                         Text("完成")
                             .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .frame(height: 52)
                             .padding(.horizontal, 20)
                             .liquidGlassCapsule(interactive: true)
