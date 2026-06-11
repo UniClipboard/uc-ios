@@ -112,6 +112,17 @@ final class SyncEngine {
     @ObservationIgnored
     private var isTicking: Bool = false
 
+    /// Client of the in-flight tick's server round-trip, held so
+    /// `handleNetworkRouteChanged` / `handleEndpointChanged` can abort a
+    /// request that's talking to a now-dead URL instead of letting it run
+    /// out the request timeout — during which `isTicking` would stall
+    /// explicit refreshes (the pull-to-refresh "stuck spinner" after a
+    /// Wi-Fi → cellular flip). Cleared when the tick unwinds; the detached
+    /// history-sync task may keep the client alive past that, which is
+    /// fine — history sync is best-effort and swallows its own errors.
+    @ObservationIgnored
+    private var inFlightClient: SyncClipboardClient?
+
     /// Normal foreground cadence. Public for tests / debug overrides; not a
     /// user setting.
     @ObservationIgnored
@@ -320,6 +331,36 @@ final class SyncEngine {
         forceTickNow()
     }
 
+    /// The network path changed (Wi-Fi ↔ cellular, VPN up/down) — called by
+    /// `AppViewModel.handleNetworkChanged` the moment NWPathMonitor fires.
+    /// Anything in flight was built against a URL chosen for the OLD
+    /// network and may now be a blackhole: cancel it so the tick unwinds in
+    /// milliseconds instead of running out the request timeout. The backoff
+    /// accumulated against the old path doesn't transfer either — failures
+    /// of a dead route say nothing about the new one. No forced tick here:
+    /// with the gate cleared the 1Hz cadence retries immediately against
+    /// shape order (the VM nils `liveURL` before calling us), and the §5.3
+    /// probe fires `handleEndpointChanged` if its verdict flips the URL.
+    func handleNetworkRouteChanged() {
+        inFlightClient?.cancelInFlight()
+        consecutiveFailures = 0
+        nextNetworkAttemptAt = nil
+    }
+
+    /// The §5.3 probe confirmed a reachable live URL different from the
+    /// previous one — a recovery signal, act NOW rather than waiting out
+    /// cadence or leftover backoff: cancel whatever is still talking to
+    /// the old URL, clear the gate, and tick immediately (the per-tick
+    /// client rebuild picks the new `urls[0]` up automatically). Same
+    /// profile, same content timeline — sync watermarks deliberately
+    /// untouched, unlike `handleActiveServerChanged`.
+    func handleEndpointChanged() {
+        inFlightClient?.cancelInFlight()
+        consecutiveFailures = 0
+        nextNetworkAttemptAt = nil
+        forceTickNow()
+    }
+
     private func cadenceSeconds() -> Double {
         switch state {
         case .authFailed:       return .infinity
@@ -383,6 +424,7 @@ final class SyncEngine {
         isTicking = true
         defer {
             isTicking = false
+            inFlightClient = nil
             if explicit { isExplicitlyRefreshing = false }
         }
         guard let vm = viewModel else {
@@ -443,6 +485,7 @@ final class SyncEngine {
                 server: server,
                 trustInsecureCert: vm.appSettings.trustInsecureCert
             )
+            inFlightClient = client
             // Pull side first (server-wins).
             let serverEntryOrNil: Clipboard?
             do {
@@ -505,6 +548,14 @@ final class SyncEngine {
             state = .authFailed
             lastError = e
             stop()
+        } catch let e as SyncError where e.kind == .cancelled {
+            // Deliberate abort: a network-path change or live-URL flip
+            // invalidated the URL this tick was talking to, and the VM
+            // cancelled the request mid-flight. Not a failure of server or
+            // network — no backoff, no state flip, no re-probe kick; the
+            // follow-up tick (1Hz cadence or `handleEndpointChanged`'s
+            // forced one) runs against the fresh `urls[0]`.
+            log.info("tick: aborted — request cancelled by network-route/endpoint change")
         } catch let e as SyncError {
             consecutiveFailures += 1
             nextNetworkAttemptAt = Date().addingTimeInterval(currentBackoffSeconds())

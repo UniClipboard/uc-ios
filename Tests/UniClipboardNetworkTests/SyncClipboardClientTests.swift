@@ -340,6 +340,42 @@ final class SyncClipboardClientTests: XCTestCase {
 
     // MARK: - Helpers
 
+    // MARK: - cancelInFlight (§5.3 network-epoch invalidation)
+
+    func test_cancelInFlight_poisonsSubsequentCallsWithoutTouchingNetwork() async throws {
+        let client = try makeClient()
+        var handlerCalled = false
+        MockURLProtocol.handler = { req in
+            handlerCalled = true
+            return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!, Data())
+        }
+        client.cancelInFlight()
+        await assertThrowsKind(.cancelled) {
+            _ = try await client.getClipboard()
+        }
+        XCTAssertFalse(handlerCalled, "a cancelled client must refuse new requests before any network I/O")
+    }
+
+    func test_mapURLError_cancelledMapsToCancelledKind() {
+        XCTAssertEqual(SyncError.mapURLError(URLError(.cancelled)).kind, .cancelled)
+    }
+
+    func test_perform_doesNotRetryAfterURLErrorCancelled() async throws {
+        // The 300ms retry-once path covers .networkConnectionLost/.timedOut;
+        // a cancelled task is a deliberate abort and must surface
+        // immediately, exactly once.
+        let client = try makeClient()
+        var attempts = 0
+        MockURLProtocol.handler = { _ in
+            attempts += 1
+            throw URLError(.cancelled)
+        }
+        await assertThrowsKind(.cancelled) {
+            _ = try await client.getClipboard()
+        }
+        XCTAssertEqual(attempts, 1)
+    }
+
     private func makeClient(
         baseURLString: String = "https://example.com/",
         username: String = "u",

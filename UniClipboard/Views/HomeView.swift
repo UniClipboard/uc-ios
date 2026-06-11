@@ -901,6 +901,7 @@ struct HomeView: View {
         case .serverError(let code):     return String(localized: "服务器错误 \(code)")
         case .notFound:                  return String(localized: "服务器尚未发布剪贴板")
         case .hashMismatch:              return String(localized: "内容校验失败 — 文件可能损坏")
+        case .cancelled:                 return String(localized: "请求已取消")
         }
     }
 }

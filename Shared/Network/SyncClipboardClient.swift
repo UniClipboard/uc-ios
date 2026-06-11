@@ -24,6 +24,14 @@ public final class SyncClipboardClient: @unchecked Sendable {
     private let session: URLSession
     private let ownsSession: Bool
 
+    /// Set by `cancelInFlight()`; checked at the top of `perform` so a
+    /// cancelled client also refuses NEW requests (including the 300ms
+    /// timedOut retry) instead of pointing them at a URL the caller just
+    /// declared dead. Lock-guarded: callers cancel from the main actor
+    /// while `perform` runs on a background executor.
+    private let cancelLock = NSLock()
+    private var isCancelled = false
+
     /// - Parameters:
     ///   - server: profile providing URL + credentials. URL is normalized
     ///     per §1.1 inside the init.
@@ -51,6 +59,31 @@ public final class SyncClipboardClient: @unchecked Sendable {
 
     deinit {
         if ownsSession { session.invalidateAndCancel() }
+    }
+
+    /// Abort every in-flight request on this client and poison it against
+    /// new ones — all subsequent calls throw `SyncError(.cancelled)`.
+    ///
+    /// §5.3: called when the network path or the profile's live URL changes
+    /// while a request is still talking to the now-dead URL. Without this,
+    /// a GET against a blackholed route (e.g. a LAN IP reached over
+    /// cellular) runs out the full request timeout. Cancels tasks rather
+    /// than invalidating the session — `URLSession` raises an Objective-C
+    /// exception if the retry path creates a task on an invalidated
+    /// session; the `isCancelled` flag covers that window instead.
+    public func cancelInFlight() {
+        cancelLock.lock()
+        isCancelled = true
+        cancelLock.unlock()
+        session.getAllTasks { tasks in
+            for task in tasks { task.cancel() }
+        }
+    }
+
+    private var wasCancelled: Bool {
+        cancelLock.lock()
+        defer { cancelLock.unlock() }
+        return isCancelled
     }
 
     // MARK: - Endpoints
@@ -212,6 +245,9 @@ public final class SyncClipboardClient: @unchecked Sendable {
     }
 
     private func perform(_ req: URLRequest, attempt: Int = 1) async throws -> (Data, URLResponse) {
+        if wasCancelled {
+            throw SyncError(kind: .cancelled, underlying: "client cancelled via cancelInFlight()")
+        }
         do {
             return try await session.data(for: req)
         } catch let e as URLError {
@@ -262,9 +298,14 @@ public final class SyncClipboardClient: @unchecked Sendable {
 
     private static func makeSession(trustInsecureCert: Bool) -> URLSession {
         let cfg = URLSessionConfiguration.ephemeral
-        // §1 timeouts: 5s connect, 5min receive (read path doesn't push, send timeout
-        // is irrelevant here; align with receive).
-        cfg.timeoutIntervalForRequest = 30
+        // §1 timeouts. `timeoutIntervalForRequest` is an IDLE timer (resets
+        // whenever data arrives), so 10s doesn't cap large transfers — the
+        // 5min resource clock does. 10s instead of the spec's nominal 5s
+        // connect: URLSession has no separate connect timeout, and the idle
+        // timer also spans server think-time on slow LAN boxes. It's the
+        // backstop for a blackholed route (LAN IP over cellular) when no
+        // path-change event fired to cancel the request explicitly.
+        cfg.timeoutIntervalForRequest = 10
         cfg.timeoutIntervalForResource = 5 * 60
         if trustInsecureCert {
             let delegate = TrustingDelegate()

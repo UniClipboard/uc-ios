@@ -23,9 +23,9 @@ as round-trip test fixtures for any new client implementation.
 | Methods | `GET`, `PUT` |
 | Authentication | HTTP Basic (`Authorization: Basic <base64(username + ":" + password)>`) on **every** request |
 | TLS | Both `http://` and `https://` schemes are accepted. The client MAY offer a "trust insecure cert" toggle that disables certificate validation entirely (development/LAN only). |
-| Connect timeout | 5 s |
+| Connect timeout | 5 s nominal. This client (URLSession) has no separate connect clock; it uses a **10 s idle timeout** (`timeoutIntervalForRequest` — resets whenever data arrives, so it caps connect + server think-time, not transfer size). The idle timeout is the *backstop* for a blackholed route (e.g. a LAN IP dialed over cellular); the primary defense is active cancellation on network change (§5.3). |
 | Send timeout | 10 min (large file uploads) |
-| Receive timeout | 5 min (large file downloads) |
+| Receive timeout | 5 min (large file downloads; this client: `timeoutIntervalForResource` = 5 min) |
 | Status codes treated as success | `200`, `201`, `204` |
 | Status code treated as auth failure | `401` |
 | Status code treated as not-found | `404` |
@@ -784,6 +784,34 @@ main app only) so the keyboard extension reads the app's confirmed choice
 instead of re-probing; absent a cached value it falls back to Layer 1's
 `urls[0]`.
 
+**Verdict invalidation — network epochs.** A probe verdict is only valid for
+the network it was measured on. The main app keeps a monotonic **network
+epoch** counter, advanced on every network-context change (Wi-Fi ↔ cellular,
+SSID change, VPN up/down), and the moment the epoch advances:
+
+- The **in-memory** live URL is dropped immediately — readers fall back to
+  pure shape order, which is already the right guess for the new network —
+  rather than letting a verdict from the old network lead `preferredURLs`
+  until the next probe lands. (The *persisted* per-profile value is left
+  alone; it is only read at cold launch / profile switch as a first guess
+  and the next probe overwrites it.)
+- Any **in-flight sync request** was built against a URL chosen for the old
+  network and is cancelled outright; a cancelled request is a deliberate
+  abort, NOT a sync failure — no backoff, no error surfaced.
+- The sync engine's **failure backoff is cleared** — failures of the old
+  path say nothing about the new one.
+- Probes are **epoch-stamped at start**: a verdict landing after the epoch
+  (or the active profile) moved on describes the wrong network and is
+  discarded wholesale — no cache write, no debounce-clock touch — and a
+  fresh probe is started for the new epoch. The probe debounce (the 1 Hz
+  sync tick re-kicks a probe on every network-class failure) is scoped to
+  one epoch: the first probe after a network change is never suppressed.
+
+Conversely, a probe verdict that **flips the live URL to a reachable
+candidate is a recovery signal**: the engine cancels whatever is still
+talking to the old URL, clears its backoff, and attempts a sync immediately
+instead of waiting out the retry window accumulated against the dead path.
+
 A client MAY surface which URL is in use (e.g. a "direct / relay" badge) so the
 user understands why latency changed without a manual pick.
 
@@ -933,6 +961,7 @@ Recommended message mapping (mirrors `_handleDioException` in
 | HTTP 404 on `/api/history/<id>` | "History record not found" — map to `RecordNotFound` so callers can distinguish "exists but soft-deleted" from "never existed" |
 | HTTP 409 on `POST /api/history` or `PATCH /api/history/...` | "History record version conflict" — surface as `SyncConflict` carrying the server's current record (response body) so the caller can rebase |
 | Time skew detected during connection test (§2.5) | "服务器与本地时间差距过大，请同步系统时间" — block the test before any further API call |
+| Request cancelled by the client (§5.3 network-epoch invalidation) | Not user-facing from the sync engine — a deliberate abort, swallowed silently (no backoff, no error state). UI surfaces triggered by a user action MAY show "请求已取消". |
 
 Authentication failures (`401`) MUST NOT trigger automatic retries.
 Version conflicts (`409`) on PATCH SHOULD trigger an automatic

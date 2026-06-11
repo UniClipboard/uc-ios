@@ -284,21 +284,60 @@ final class AppViewModel {
         if newId != nil { kickLiveEndpointRefresh(force: true) }
     }
 
-    /// Hook fired by `CurrentSSIDProvider.onNetworkChanged`. Three jobs: (1)
-    /// publish the current SSID to the App Group so the keyboard extension
-    /// resolves the same on-demand server (`SettingsStore.saveLastKnownSSID`
-    /// — `context.ssid` is nil on cellular / no-Wi-Fi, which clears the file
-    /// so the keyboard never trusts a stale name), (2) reconcile the engine
-    /// in case the change flipped the effective server, and (3) re-probe the
-    /// candidates — the URL that was reachable on the old network may not be
-    /// on the new one (§5.3 Layer 2).
+    /// Hook fired by `CurrentSSIDProvider.onNetworkChanged`. Jobs, in order:
+    /// (1) advance the network epoch — every probe verdict is stamped with
+    /// the epoch it started under, and a stale stamp means "this verdict
+    /// describes the OLD network, discard it" (§5.3 Layer 2); (2) publish
+    /// the current SSID to the App Group so the keyboard extension resolves
+    /// the same on-demand server (`context.ssid` is nil on cellular /
+    /// no-Wi-Fi, which clears the file so the keyboard never trusts a stale
+    /// name); (3) drop the in-memory live URL — it was confirmed on the old
+    /// network, and letting it lead `preferredURLs` would point every tick
+    /// at a likely-dead path until the probe lands; shape order alone is
+    /// already the right guess for the new network (cellular ranks
+    /// tailscale/wan ahead of lan). The *persisted* value is left alone —
+    /// it's only read at cold launch / profile switch as a first guess and
+    /// the probe overwrites it within seconds; (4) cancel the engine's
+    /// in-flight request and clear its backoff — both belong to the old
+    /// path; (5) reconcile the engine in case the change flipped the
+    /// effective server, and (6) re-probe the candidates.
     private func handleNetworkChanged(_ context: NetworkContext) {
+        networkEpoch &+= 1
         store.saveLastKnownSSID(context.ssid)
+        if liveURL != nil { liveURL = nil }
+        engine?.handleNetworkRouteChanged()
         reconcileActiveServer()
         kickLiveEndpointRefresh(force: true)
     }
 
     // MARK: - §5.3 Layer 2: live-endpoint probing
+
+    /// Monotonic counter, advanced on every `NetworkContext` change. The
+    /// invariant everything below hangs off: a probe verdict is only valid
+    /// for the epoch it started under. A verdict landing with a stale stamp
+    /// describes the OLD network and is discarded wholesale — that, not a
+    /// time-based debounce, is what makes the probe race-free across
+    /// Wi-Fi ↔ cellular flips (NWPathMonitor fires multiple times during a
+    /// transition; whichever probes those events start, only one epoch's
+    /// verdict can win). Wraps on overflow (`&+=`) — equality is all we
+    /// compare.
+    @ObservationIgnored
+    private var networkEpoch: UInt64 = 0
+
+    /// Epoch of the last probe whose verdict was *adopted* (completed with
+    /// its epoch still current). Scopes the debounce: within one epoch,
+    /// non-forced probes are debounced; the first probe of a new epoch is
+    /// answering a brand-new question and must never be suppressed.
+    @ObservationIgnored
+    private var lastAdoptedProbeEpoch: UInt64?
+
+    /// Profile the last adopted verdict was probed for. Without this, a
+    /// probe that completes after the user switched profiles would mark
+    /// the epoch "answered" and the joiner waiting on it (the profile
+    /// switch's own forced refresh) would return without ever probing the
+    /// NEW profile's candidates.
+    @ObservationIgnored
+    private var lastAdoptedProbeConfigId: String?
 
     /// In-flight probe, for deduplication — a second caller awaits the
     /// running probe instead of stacking another. Not view state.
@@ -312,9 +351,9 @@ final class AppViewModel {
     @ObservationIgnored
     private var lastLiveProbeAt: Date?
 
-    /// Minimum gap between non-forced probes. Forced probes (profile
-    /// switch, network change, foreground) bypass it — those events
-    /// invalidate the previous verdict by definition.
+    /// Minimum gap between non-forced probes *within one network epoch*.
+    /// Forced probes (profile switch, network change, foreground) bypass
+    /// it — those events invalidate the previous verdict by definition.
     private static let liveProbeDebounce: TimeInterval = 10
 
     /// Fire-and-forget wrapper for synchronous call sites (network-change
@@ -331,6 +370,10 @@ final class AppViewModel {
         store.saveLiveURL(configId: configId, url)
         if servers.activeConfig?.id == configId, liveURL != url {
             liveURL = url
+            // Same recovery semantics as the in-app probe: a confirmed
+            // working URL must cut through any backoff the engine
+            // accumulated against the previous path.
+            if url != nil { engine?.handleEndpointChanged() }
         }
     }
 
@@ -341,16 +384,37 @@ final class AppViewModel {
     /// when the URL flips within the same profile — same server, same
     /// content timeline, so the sync watermarks stay valid; the per-tick
     /// client rebuild picks the new `urls[0]` up automatically.
+    /// True when the last adopted verdict answers for the CURRENT network
+    /// epoch and the CURRENT profile — i.e. a fresh probe would be asking
+    /// a question that was already answered.
+    private var adoptedVerdictIsCurrent: Bool {
+        lastAdoptedProbeEpoch == networkEpoch
+            && lastAdoptedProbeConfigId == servers.activeConfig?.id
+    }
+
     func refreshLiveEndpoint(force: Bool = false) async {
         if let inflight = liveProbeTask {
+            // Join rather than stack. If the joined probe's verdict was
+            // adopted for the current epoch + profile, its answer is ours
+            // too — even for a forced caller, "a probe of this network
+            // just finished" is exactly what force asks for. If it was
+            // discarded (network or profile moved while it ran), re-enter:
+            // the recursion joins whatever replacement is by then in
+            // flight, or starts a fresh probe. Each extra level requires
+            // another real network/profile change, so this terminates.
             await inflight.value
+            if adoptedVerdictIsCurrent { return }
+            await refreshLiveEndpoint(force: force)
             return
         }
         guard let base = servers.activeConfig else { return }
-        if !force, let last = lastLiveProbeAt,
+        if !force,
+           adoptedVerdictIsCurrent,
+           let last = lastLiveProbeAt,
            Date.now.timeIntervalSince(last) < Self.liveProbeDebounce {
             return
         }
+        let epoch = networkEpoch
         let ordered = base.orderedURLs(network: ssidProvider.networkContext)
         let trust = appSettings.trustInsecureCert
         let task = Task { [weak self] in
@@ -362,19 +426,40 @@ final class AppViewModel {
             )
             let picked = ConnectionTester.firstReachable(in: ordered, results: results)
             guard let self else { return }
+            // The task clears its own registration (not the awaiters) so
+            // that by the time ANY awaiter resumes, `liveProbeTask` is
+            // already nil — an awaiter that decides to re-probe starts a
+            // fresh task instead of re-joining this finished one, and no
+            // awaiter can accidentally null out that fresh task.
+            defer { self.liveProbeTask = nil }
+            // Stale verdict — the network (epoch) or the profile changed
+            // while the probe ran, so the results answer the wrong
+            // question. Discard wholesale: no liveURL write, no
+            // debounce-clock touch, no persistence. The awaiters re-probe.
+            guard epoch == self.networkEpoch,
+                  self.servers.activeConfig?.id == base.id else { return }
             self.lastLiveProbeAt = .now
-            // The user switched profiles while the probe was in flight —
-            // these results describe the old profile's candidates.
-            guard self.servers.activeConfig?.id == base.id else { return }
+            self.lastAdoptedProbeEpoch = epoch
+            self.lastAdoptedProbeConfigId = base.id
+            self.store.saveLiveURL(configId: base.id, picked)
             if self.liveURL != picked {
                 log.info("liveProbe: live URL changed → \(picked ?? "none reachable", privacy: .private)")
+                self.liveURL = picked
+                // A confirmed-reachable URL is a recovery signal — the
+                // engine must drop the backoff it accumulated against the
+                // previous path and tick now, not after the leftover
+                // backoff window expires. All-unreachable (nil) is not a
+                // recovery; leave the engine to its own retry rhythm.
+                if picked != nil { self.engine?.handleEndpointChanged() }
             }
-            self.store.saveLiveURL(configId: base.id, picked)
-            if self.liveURL != picked { self.liveURL = picked }
         }
         liveProbeTask = task
         await task.value
-        liveProbeTask = nil
+        // Verdict discarded (network/profile moved mid-probe) → probe again
+        // immediately against the new state of the world.
+        if !adoptedVerdictIsCurrent {
+            await refreshLiveEndpoint(force: true)
+        }
     }
 
     /// Entry point for `.onOpenURL`. Parses the incoming URL as a

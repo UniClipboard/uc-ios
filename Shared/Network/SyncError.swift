@@ -16,6 +16,12 @@ public struct SyncError: Error, Equatable, Sendable {
         /// §4.4 — downloaded payload's SHA-256 didn't match the metadata
         /// `hash`. Purely client-side; not produced by `mapHTTPStatus`.
         case hashMismatch
+        /// The caller deliberately aborted the request — a network-path
+        /// change or live-URL flip invalidated the URL the request was
+        /// built against (§5.3). Not a server or connectivity failure:
+        /// the sync engine treats it as a silent no-op (no backoff, no
+        /// state flip), unlike every other kind.
+        case cancelled
     }
 
     public let kind: Kind
@@ -35,6 +41,8 @@ extension SyncError {
     /// Map a `URLError` to the closest `SyncError.Kind`. Spec §6.
     static func mapURLError(_ e: URLError) -> SyncError {
         switch e.code {
+        case .cancelled:
+            return SyncError(kind: .cancelled, underlying: e.localizedDescription)
         case .timedOut:
             return SyncError(kind: .connectTimeout, underlying: e.localizedDescription)
         case .notConnectedToInternet,
