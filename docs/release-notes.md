@@ -11,6 +11,51 @@ is primary (the app's source language is zh-Hans); English mirrors it.
 
 ---
 
+## 1.0 (Build 10)
+
+### 简体中文
+
+```
+新功能
+• 一台服务器,多个地址:现在可以为同一台服务器填写多个地址(局域网、Tailscale、公网)。
+  App 会自动探测哪个地址当前可达并优先使用;切换网络、回到前台或同步失败时都会自动重新
+  选择,无需再手动切换服务器。原先「按 Wi-Fi / 蜂窝 / Tailscale 触发切换服务器」的设置
+  由此取代。
+• 服务器编辑页新增地址列表管理:每个地址会自动识别类型(局域网 / Tailscale / 公网),
+  「测试连接」会逐个探测所有地址,并标出「将使用」的那一个。
+• 扫码配对升级:配对二维码现在携带服务器的全部地址,扫一次即可整套导入。
+
+优化与修复
+• 首页剪贴板卡片改为标准正方形,在不同尺寸设备与横竖屏下排列更整齐。
+• 修复顶栏「选择 / 全选 / 完成」按钮在空间不足时文字竖排折行的问题。
+• 「信任不安全证书」设置的说明更准确:该开关仅影响自签名 HTTPS 证书,普通 HTTP 连接
+  不受影响。
+```
+
+### English
+
+```
+New
+• One server, multiple addresses: a server can now have several addresses
+  (LAN, Tailscale, public). The app probes which one is reachable and uses the
+  best automatically — re-checking when the network changes, the app returns to
+  the foreground, or a sync fails. This replaces the previous per-server
+  Wi-Fi / cellular / Tailscale switching rules.
+• New address-list editor: each address is auto-classified (LAN / Tailscale /
+  public), and "Test Connection" probes them all and marks the one that will
+  be used.
+• Smarter QR pairing: the pairing QR code now carries all of a server's
+  addresses, so one scan imports the whole set.
+
+Improvements & Fixes
+• Home clipboard cards are now true squares, lining up neatly across device
+  sizes and orientations.
+• Fixed top-bar buttons (Select / Select All / Done) wrapping vertically when
+  space ran short.
+• Clearer wording for "Trust insecure certificate": it only affects self-signed
+  HTTPS; plain HTTP connections are unaffected.
+```
+
 ## 1.0 (Build 7)
 
 ### 简体中文
