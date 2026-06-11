@@ -1,12 +1,12 @@
 import SwiftUI
 
 /// First-run setup. Drives the user from "no server configured" to a saved
-/// active ServerConfig in three steps: Welcome → ServerForm → AutoSwitch.
-/// All network calls are mocked here so the visuals can be evaluated.
+/// active ServerConfig in two steps: Welcome → ServerForm (the form saves
+/// directly — URL auto-switch needs no per-config setup anymore, it's
+/// derived from the candidate URLs themselves, §5.3).
 ///
 /// Env-driven shortcuts (debug / screenshots only):
 /// - `UC_SETUP_STEP=form`        → start on ServerForm
-/// - `UC_SETUP_STEP=autoswitch`  → start on AutoSwitch (assumes prefilled draft)
 /// - `UC_PREFILL=1`              → prefill the form with reasonable defaults
 /// - `UC_PREFILL_TEST=success|authFailed|unreachable|missingFields`
 ///                                → seed the test-connection result
@@ -27,29 +27,19 @@ struct SetupFlowView: View {
 
     enum Step: Hashable {
         case form
-        /// Form with the three credential fields pre-filled from a
+        /// Form with the credential fields pre-filled from a
         /// `uniclipboard://connect?…` URI. The shape is the same as
         /// `.form`; carrying the values through the path makes the step
         /// poppable + restorable (NavigationStack tears down destinations
         /// on pop, so `@State` defaults inside `ServerFormStepView` wouldn't
-        /// survive a back-and-forth).
-        case formPrefilled(url: String, username: String, password: String)
-        case autoSwitch(name: String, url: String, username: String, password: String)
+        /// survive a back-and-forth). `urls` is the full §5.6 candidate
+        /// list (never empty; single-URL QRs yield one element).
+        case formPrefilled(urls: [String], username: String, password: String)
 
         static func initialPath() -> [Step] {
             switch ProcessInfo.processInfo.environment["UC_SETUP_STEP"] {
             case "form":
                 return [.form]
-            case "autoswitch":
-                return [
-                    .form,
-                    .autoSwitch(
-                        name: SetupPrefill.name,
-                        url: SetupPrefill.url,
-                        username: SetupPrefill.username,
-                        password: SetupPrefill.password
-                    ),
-                ]
             default:
                 return []
             }
@@ -64,25 +54,21 @@ struct SetupFlowView: View {
                     case .form:
                         ServerFormStepView(
                             name: $draftName,
-                            existingNames: existingNames
-                        )
-                    case .formPrefilled(let url, let username, let password):
-                        ServerFormStepView(
-                            name: $draftName,
                             existingNames: existingNames,
-                            initialURL: url,
-                            initialUsername: username,
-                            initialPassword: password
-                        )
-                    case .autoSwitch(let name, let url, let username, let password):
-                        AutoSwitchStepView(
-                            name: name,
-                            url: url,
-                            username: username,
-                            password: password,
                             servers: $vm.servers,
                             ssidProvider: vm.ssidProvider,
                             onComplete: onComplete
+                        )
+                    case .formPrefilled(let urls, let username, let password):
+                        ServerFormStepView(
+                            name: $draftName,
+                            existingNames: existingNames,
+                            servers: $vm.servers,
+                            ssidProvider: vm.ssidProvider,
+                            onComplete: onComplete,
+                            initialURLs: urls,
+                            initialUsername: username,
+                            initialPassword: password
                         )
                     }
                 }
@@ -95,7 +81,7 @@ struct SetupFlowView: View {
             // label so the alias field isn't empty after navigation.
             guard let p = vm.consumePendingImport() else { return }
             draftName = p.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            path = [.formPrefilled(url: p.url, username: p.user, password: p.pwd)]
+            path = [.formPrefilled(urls: p.urls, username: p.user, password: p.pwd)]
         }
     }
 
@@ -105,7 +91,11 @@ struct SetupFlowView: View {
     /// shape (ConnectURI's label is mapped to `name` upstream).
     private func handleScanned(_ payload: ServerQRPayload) {
         draftName = payload.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        path = [.formPrefilled(url: payload.url, username: payload.username, password: payload.password)]
+        path = [.formPrefilled(
+            urls: payload.effectiveURLs,
+            username: payload.username,
+            password: payload.password
+        )]
     }
 }
 
@@ -220,75 +210,69 @@ private struct WelcomeStepView: View {
     }
 }
 
-// MARK: - Step 2 · ServerForm
+
+// MARK: - Step 2 · ServerForm (final step — saves directly)
 
 private struct ServerFormStepView: View {
     @Binding var name: String
     let existingNames: Set<String>
+    @Binding var servers: ServerConfigList
+    let ssidProvider: CurrentSSIDProvider
+    var onComplete: () -> Void
 
-    @State private var url: String
+    /// Raw candidate-URL editor rows (§5.1); cleaned on save.
+    @State private var urls: [String]
     @State private var username: String
     @State private var password: String
     @State private var trustInsecure: Bool = false
-    @State private var test: TestState
-    /// Drives the button copy "测试连接" → "重新测试" once a real network
-    /// attempt has completed. Survives `resetTestOnEdit()` because editing
-    /// after a test is still "re-testing".
-    @State private var hasTestedOnce: Bool
-    /// Handle on the in-flight probe so edits + manual presses can cancel
-    /// the prior one. The Task itself guards against stale commits via
-    /// `Task.isCancelled` before writing back to `test`.
-    @State private var inflight: Task<Void, Never>? = nil
+    /// Latest "测试连接" verdict; nil = never tested, or invalidated by an
+    /// edit (the probe section reports both through `onProbed`). Gates
+    /// "完成" — first-run must not save a config that was never reached.
+    @State private var probeSummary: ProbeSummary?
+    /// Env-seeded verdict for screenshot recipes; see `SetupPrefill`.
+    private let probeSeed: ProbeSummary?
 
     /// - Parameters:
-    ///   - initialURL/Username/Password: when non-nil, seed the form with
+    ///   - initialURLs/Username/Password: when non-nil, seed the form with
     ///     these values and skip the `UC_PREFILL` env defaults. Used by
     ///     `Step.formPrefilled` so a connect-URI scan from outside the app
-    ///     lands the user on a ready-to-test form. Initial test state is
-    ///     forced to `.idle` so the user explicitly presses "测试连接" — we
-    ///     don't want a stale `.success` ribbon implying the QR credentials
-    ///     were already verified.
+    ///     lands the user on a ready-to-test form. The probe state stays
+    ///     empty so the user explicitly presses "测试连接" — we don't want
+    ///     a stale ✓ implying the QR credentials were already verified.
     init(
         name: Binding<String>,
         existingNames: Set<String>,
-        initialURL: String? = nil,
+        servers: Binding<ServerConfigList>,
+        ssidProvider: CurrentSSIDProvider,
+        onComplete: @escaping () -> Void,
+        initialURLs: [String]? = nil,
         initialUsername: String? = nil,
         initialPassword: String? = nil
     ) {
         _name = name
         self.existingNames = existingNames
-        _url = State(initialValue: initialURL ?? SetupPrefill.url)
+        _servers = servers
+        self.ssidProvider = ssidProvider
+        self.onComplete = onComplete
+        let prefillURL = SetupPrefill.url
+        let seededURLs = initialURLs ?? (prefillURL.isEmpty ? [""] : [prefillURL])
+        _urls = State(initialValue: seededURLs)
         _username = State(initialValue: initialUsername ?? SetupPrefill.username)
         _password = State(initialValue: initialPassword ?? SetupPrefill.password)
-        let prefilled = (initialURL != nil) || (initialUsername != nil) || (initialPassword != nil)
-        let initialTest: TestState = prefilled ? .idle : SetupPrefill.initialTestState
-        _test = State(initialValue: initialTest)
-        // Env-driven screenshot modes (UC_PREFILL_TEST=success/...) seed a
-        // result already on screen, so the button must read "重新测试" from
-        // the start — there's no "first" test left to do.
-        let tested: Bool
-        switch initialTest {
-        case .success, .authFailed, .unreachable: tested = true
-        default: tested = false
-        }
-        _hasTestedOnce = State(initialValue: tested)
-    }
-
-    enum TestState: Equatable {
-        case idle
-        case connecting
-        case success
-        case authFailed
-        case unreachable
-        case missingFields
-
-        init(_ result: ConnectionTester.Result) {
-            switch result {
-            case .success:        self = .success
-            case .authFailed:     self = .authFailed
-            case .unreachable:    self = .unreachable
-            case .missingFields:  self = .missingFields
-            }
+        // Env-driven screenshot modes (UC_PREFILL_TEST=success/…) need a
+        // verdict already on screen without a tappable button. Real QR
+        // prefill (initialURLs != nil) never seeds — see the doc comment.
+        if initialURLs == nil,
+           let result = SetupPrefill.initialProbeResult,
+           let target = seededURLs.first, !target.isEmpty {
+            let seed = ProbeSummary(
+                results: [target: result],
+                picked: result.isReachable ? target : nil
+            )
+            probeSeed = seed
+            _probeSummary = State(initialValue: seed)
+        } else {
+            probeSeed = nil
         }
     }
 
@@ -313,19 +297,10 @@ private struct ServerFormStepView: View {
                 Text("将显示在剪贴板顶栏。留空会用服务器地址替代。")
             }
 
-            Section {
-                TextField("https://your-server.com:5033/", text: $url)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Toggle(isOn: $trustInsecure) {
-                    Text("允许不安全证书")
-                }
-            } header: {
-                Text("服务器地址")
-            } footer: {
-                Text("局域网或自签名证书时勾选")
-            }
+            ServerURLsEditorSection(
+                urls: $urls,
+                trustInsecureCert: $trustInsecure
+            )
 
             Section("凭据") {
                 TextField("用户名", text: $username)
@@ -334,50 +309,36 @@ private struct ServerFormStepView: View {
                 SecureField("密码", text: $password)
             }
 
-            Section {
-                statusRow
+            TestAllConnectionsSection(
+                urls: urls,
+                username: username,
+                password: password,
+                trustInsecureCert: trustInsecure,
+                network: ssidProvider.networkContext,
+                onProbed: { probeSummary = $0 },
+                seed: probeSeed
+            )
 
-                Button {
-                    runTest()
-                } label: {
-                    HStack {
-                        if test == .connecting {
-                            ProgressView().controlSize(.small)
-                            Text("正在连接…")
-                        } else {
-                            Image(systemName: "bolt.horizontal.circle")
-                            Text(hasTestedOnce ? "重新测试" : "测试连接")
-                        }
-                        Spacer()
-                    }
-                }
-                .disabled(test == .connecting)
-            } header: {
-                Text("连接")
-            } footer: {
-                if test == .unreachable {
-                    permissionHintFooter
-                }
-            }
-
-            // "继续" sits in its own Section so the test action and the
-            // navigation action aren't visually coupled. Rendered always —
+            // "完成" sits in its own Section so the test action and the
+            // commit action aren't visually coupled. Rendered always —
             // disabled until a passing test — so the path forward is
             // visible from the moment the form opens.
             Section {
-                NavigationLink(
-                    value: SetupFlowView.Step.autoSwitch(
-                        name: name, url: url, username: username, password: password
-                    )
-                ) {
+                Button {
+                    save()
+                } label: {
                     HStack {
-                        Text("继续")
+                        Text("完成")
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.tint)
                         Spacer()
                     }
                 }
-                .disabled(test != .success)
+                .disabled(probeSummary?.hasSuccess != true)
+            } footer: {
+                if let s = probeSummary, s.picked == nil {
+                    permissionHintFooter
+                }
             }
         }
         .navigationTitle("服务器配置")
@@ -398,12 +359,6 @@ private struct ServerFormStepView: View {
             // the user press "测试连接" themselves; that press is also what
             // triggers the OS prompt the first time, with clear cause.
         }
-        // Editing a probe-relevant field invalidates the last result. Name
-        // is alias text and doesn't affect what the server returns.
-        .onChange(of: url) { _, _ in resetTestOnEdit() }
-        .onChange(of: username) { _, _ in resetTestOnEdit() }
-        .onChange(of: password) { _, _ in resetTestOnEdit() }
-        .onChange(of: trustInsecure) { _, _ in resetTestOnEdit() }
     }
 
     @ViewBuilder
@@ -421,251 +376,19 @@ private struct ServerFormStepView: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private var statusRow: some View {
-        switch test {
-        case .idle, .connecting:
-            EmptyView()
-        case .success:
-            Label {
-                Text("已连接 — 服务器可达")
-            } icon: {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
-        case .authFailed:
-            Label {
-                Text("认证失败 — 检查用户名和密码")
-            } icon: {
-                Image(systemName: "lock.trianglebadge.exclamationmark.fill")
-                    .foregroundStyle(.red)
-            }
-        case .unreachable:
-            Label {
-                Text("无法连接 — 检查 URL 和网络")
-            } icon: {
-                Image(systemName: "wifi.exclamationmark")
-                    .foregroundStyle(.orange)
-            }
-        case .missingFields:
-            Label {
-                Text("请填写 URL、用户名和密码")
-            } icon: {
-                Image(systemName: "exclamationmark.circle")
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func runTest() {
-        // Cancel any prior probe before starting a new one. The Task below
-        // checks `Task.isCancelled` before committing so a late completion
-        // can't paint stale state over a user edit or a fresher result.
-        inflight?.cancel()
-
-        // Short-circuit missingFields before showing the spinner so the
-        // status label snaps to the hint without a brief "正在连接…" flash.
-        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedURL.isEmpty || username.isEmpty || password.isEmpty {
-            test = .missingFields
-            return
-        }
-        test = .connecting
-        let probeURL = url
-        let probeUser = username
-        let probePwd = password
-        let probeTrust = trustInsecure
-        inflight = Task {
-            let result = await ConnectionTester.test(
-                url: probeURL,
-                username: probeUser,
-                password: probePwd,
-                trustInsecureCert: probeTrust
-            )
-            guard !Task.isCancelled else { return }
-            test = TestState(result)
-            hasTestedOnce = true
-        }
-    }
-
-    private func resetTestOnEdit() {
-        // Field changed → cached result no longer represents what the
-        // server would return now. Cancel any in-flight probe and drop the
-        // status. `hasTestedOnce` stays so the button keeps reading
-        // "重新测试" — the user is, in fact, re-testing.
-        inflight?.cancel()
-        if test != .idle { test = .idle }
-    }
-}
-
-// MARK: - Step 3 · AutoSwitch
-
-private struct AutoSwitchStepView: View {
-    let name: String
-    let url: String
-    let username: String
-    let password: String
-    @Binding var servers: ServerConfigList
-    @Bindable var ssidProvider: CurrentSSIDProvider
-    var onComplete: () -> Void
-
-    @State private var ssids: [String] = []
-    @State private var strategy: AutoSwitchStrategy = .none
-
-    var body: some View {
-        Form {
-            Section {
-                Text("选择此配置在什么网络下自动启用（可选）。\n稍后也可以在「设置 → 服务器列表」修改。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(2)
-            }
-
-            Section {
-                Picker(selection: $strategy) {
-                    Label("不自动（仅手动）", systemImage: AutoSwitchStrategy.none.iconName).tag(AutoSwitchStrategy.none)
-                    Label("指定 Wi-Fi", systemImage: AutoSwitchStrategy.wifi.iconName).tag(AutoSwitchStrategy.wifi)
-                    Label("蜂窝 / 移动数据", systemImage: AutoSwitchStrategy.cellular.iconName).tag(AutoSwitchStrategy.cellular)
-                    Label("虚拟网络 (Tailscale)", systemImage: AutoSwitchStrategy.tailscale.iconName).tag(AutoSwitchStrategy.tailscale)
-                } label: {
-                    EmptyView()
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            }
-
-            if strategy == .wifi {
-                Section("当前网络") {
-                    currentNetworkRow
-                }
-
-                Section("已添加的 WiFi") {
-                    if ssids.isEmpty {
-                        Text("无").foregroundStyle(.secondary)
-                    } else {
-                        ForEach(ssids, id: \.self) { ssid in
-                            Label(ssid, systemImage: "wifi")
-                        }
-                        .onDelete { indices in
-                            ssids.remove(atOffsets: indices)
-                        }
-                    }
-                }
-            }
-
-            Section {
-                Button {
-                    save()
-                } label: {
-                    Text("完成")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .foregroundStyle(Color(.systemBackground))
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                // Hide the inter-row hairline: the borderedProminent button
-                // is a CTA card, not a list cell. SwiftUI insets the
-                // separator to the leading edge of the row's content; with
-                // a centered .frame(maxWidth: .infinity) label that's the
-                // text's leading, leaving only the right half of the line
-                // visible between this row and 稍后设置.
-                .listRowSeparator(.hidden)
-
-                Button {
-                    save()
-                } label: {
-                    Text("稍后设置")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .listRowSeparator(.hidden)
-            }
-        }
-        .navigationTitle("自动切换")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            ssidProvider.refresh()
-        }
-    }
-
-    @ViewBuilder
-    private var currentNetworkRow: some View {
-        switch ssidProvider.authState {
-        case .unavailable:
-            HStack {
-                Image(systemName: "wifi.exclamationmark")
-                    .foregroundStyle(.secondary)
-                Text("当前设备无法读取 WiFi 名称")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-        case .notDetermined:
-            HStack {
-                Image(systemName: "location.circle")
-                    .foregroundStyle(.tint)
-                Text("授权位置以读取当前 WiFi")
-                Spacer()
-                Button("授权") { ssidProvider.requestAuthorization() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
-        case .denied:
-            HStack {
-                Image(systemName: "location.slash")
-                    .foregroundStyle(.orange)
-                Text("位置权限未授予")
-                    .font(.callout)
-                Spacer()
-                Button("打开设置") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-        case .authorized:
-            HStack {
-                Image(systemName: "wifi")
-                    .foregroundStyle(.tint)
-                if let ssid = ssidProvider.currentSSID {
-                    Text(ssid)
-                    Spacer()
-                    if ssids.contains(ssid) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Button("添加") { ssids.append(ssid) }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-                } else {
-                    Text("未连接 WiFi")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        ssidProvider.refresh()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                }
-            }
-        }
-    }
-
     private func save() {
+        var seen = Set<String>()
+        let cleaned = urls
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        guard !cleaned.isEmpty else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let server = ServerConfig(
             id: UUID().uuidString.lowercased(),
             name: trimmedName.isEmpty ? nil : trimmedName,
-            url: url,
+            urls: cleaned,
             username: username,
-            password: password,
-            autoSwitchWifiNames: ssids,
-            autoSwitchStrategy: strategy
+            password: password
         )
         servers.configs.append(server)
         servers.activeConfigId = server.id
@@ -681,13 +404,15 @@ private enum SetupPrefill {
     static var username: String { value("UC_PREFILL_USERNAME", fallback: "alice") }
     static var password: String { value("UC_PREFILL_PASSWORD", fallback: "p4ssw0rd!") }
 
-    static var initialTestState: ServerFormStepView.TestState {
+    /// `UC_PREFILL_TEST` → a pre-baked probe verdict for the prefilled URL,
+    /// so screenshot recipes can show the tested form without a tap.
+    static var initialProbeResult: ConnectionTester.Result? {
         switch ProcessInfo.processInfo.environment["UC_PREFILL_TEST"] {
         case "success":       return .success
         case "authFailed":    return .authFailed
         case "unreachable":   return .unreachable
         case "missingFields": return .missingFields
-        default:              return .idle
+        default:              return nil
         }
     }
 

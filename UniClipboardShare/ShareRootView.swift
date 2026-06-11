@@ -312,7 +312,22 @@ struct ShareRootView: View {
     }
 
     private func send() async {
-        guard let item, let server = resolvedServer else { return }
+        guard let item, var server = resolvedServer else { return }
+        // §5.3 from an extension: like the keyboard, the share sheet never
+        // probes. Layer the main app's last probe verdict (App Group
+        // `live_urls`) over pure shape order so the upload PUTs against the
+        // path that actually works on this network instead of burning a
+        // timeout on `urls[0]`. No NWPathMonitor here (the sheet lives for
+        // seconds) — the stored SSID stands in as the Wi-Fi signal and
+        // Tailscale is checked live, both entitlement-free.
+        let store = SettingsStore()
+        server.urls = server.preferredURLs(
+            live: store.loadLiveURL(configId: server.id),
+            network: NetworkContext(
+                ssid: store.loadLastKnownSSID(),
+                isTailscale: TailscaleDetector.isActive()
+            )
+        )
         phase = .uploading
         do {
             let uploader = ShareUploader()

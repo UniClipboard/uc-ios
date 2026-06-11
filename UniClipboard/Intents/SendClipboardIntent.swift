@@ -62,7 +62,7 @@ struct SendClipboardIntent: AppIntent {
         let store = SettingsStore()
         let servers = store.loadServers()
         let appSettings = store.loadAppSettings()
-        guard let target = ServerEntity.resolveConfig(server, in: servers) else {
+        guard let target = ServerEntity.resolveConfig(server, in: servers, store: store) else {
             return .result(dialog: "请先在 UniClipboard 中添加一台服务器")
         }
 

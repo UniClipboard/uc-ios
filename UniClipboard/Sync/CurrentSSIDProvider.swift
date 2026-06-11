@@ -51,6 +51,12 @@ final class CurrentSSIDProvider: NSObject, @preconcurrency CLLocationManagerDele
     /// the source of truth for that.
     private(set) var currentSSID: String?
 
+    /// Whether the current network path uses Wi-Fi. Unlike the SSID *name*
+    /// this needs no entitlement or Location grant, so the §5.3 "prefer the
+    /// LAN URL on Wi-Fi" ordering works even when the user denied Location.
+    /// Same NWPathMonitor freshness caveats as `isCellular`.
+    private(set) var isWifi: Bool = false
+
     /// Whether the current network path uses cellular. Read by
     /// `SyncEngine` to gate the cache prefetch (cellular bytes are
     /// precious; users opt in via Settings). Best-effort: updates
@@ -68,7 +74,12 @@ final class CurrentSSIDProvider: NSObject, @preconcurrency CLLocationManagerDele
     /// Current network as a §5.3 `NetworkContext`, fed to
     /// `ServerConfigList.effectiveActiveConfig(network:)`.
     var networkContext: NetworkContext {
-        NetworkContext(ssid: currentSSID, isCellular: isCellular, isTailscale: isTailscale)
+        NetworkContext(
+            ssid: currentSSID,
+            isWifi: isWifi,
+            isCellular: isCellular,
+            isTailscale: isTailscale
+        )
     }
 
     @ObservationIgnored
@@ -119,6 +130,7 @@ final class CurrentSSIDProvider: NSObject, @preconcurrency CLLocationManagerDele
             let tailscale = TailscaleDetector.isActive()
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.isWifi = onWifi
                 self.isCellular = cellular
                 self.isTailscale = tailscale
                 // If the path no longer uses Wi-Fi, the last-read SSID is stale.

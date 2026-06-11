@@ -9,26 +9,29 @@ enum Mock {
             ServerConfig(
                 id: "0c1f2e3a-4b5c-6d7e-8f90-123456789abc",
                 name: "Home NAS",
-                url: "https://clip.home.lan:5033/",
+                // Multi-URL profile (§5.3): LAN direct + Tailscale + public
+                // relay, so previews exercise the candidate-list UI.
+                urls: [
+                    "https://clip.home.lan:5033/",
+                    "http://100.64.0.8:5033",
+                    "https://clip.example.net",
+                ],
                 username: "alice",
-                password: "p4ssw0rd!",
-                autoSwitchWifiNames: ["Home-5G", "Home-2.4G"]
+                password: "p4ssw0rd!"
             ),
             ServerConfig(
                 id: "11223344-5566-7788-99aa-bbccddeeff00",
                 name: "Office",
                 url: "http://192.168.10.20:5033",
                 username: "alice",
-                password: "office-secret",
-                autoSwitchWifiNames: ["Corp-WiFi"]
+                password: "office-secret"
             ),
             ServerConfig(
                 id: "ff112233-4455-6677-8899-aabbccddeeff",
                 name: nil,
                 url: "https://clip.example.com",
                 username: "alice",
-                password: "remote-pass",
-                autoSwitchWifiNames: []
+                password: "remote-pass"
             ),
         ],
         activeConfigId: "0c1f2e3a-4b5c-6d7e-8f90-123456789abc"

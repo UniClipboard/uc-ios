@@ -9,6 +9,16 @@ import Testing
 private let goldenURI =
     "uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ"
 
+/// base64url-no-pad a JSON payload into a full connect URI — mirrors the
+/// inline encoding the negative-vector tests do by hand.
+private func makeURI(_ jsonPayload: String) -> String {
+    let p64 = Data(jsonPayload.utf8).base64EncodedString()
+        .replacingOccurrences(of: "+", with: "-")
+        .replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: "=", with: "")
+    return "uniclipboard://connect?v=1&svc=mobile-sync&p=\(p64)"
+}
+
 @Test
 func parsesTheGoldenVector() throws {
     let p = try ConnectURI.parse(goldenURI)
@@ -76,4 +86,39 @@ func dropsNonStringValuesInOtherDict() throws {
     #expect(p.label == "Hi")
     #expect(p.other["ttl"] == nil)   // numeric value silently dropped
     #expect(p.other.count == 1)
+}
+
+// MARK: - §4 urls candidate list
+
+@Test
+func parsesUrlsCandidateList() throws {
+    let payload =
+        #"{"v":1,"url":"https://wan.example.com","urls":["https://wan.example.com","http://192.168.1.5:42720","http://100.64.0.5:42720"],"user":"u","pwd":"p"}"#
+    let p = try ConnectURI.parse(makeURI(payload))
+    #expect(p.url == "https://wan.example.com")
+    #expect(p.urls == [
+        "https://wan.example.com",
+        "http://192.168.1.5:42720",
+        "http://100.64.0.5:42720",
+    ])
+}
+
+@Test
+func urlsFallsBackToSingleUrlWhenAbsent() throws {
+    // The golden vector carries no `urls` (single-URL pairing); it must
+    // surface as `[url]` so consumers always read a non-empty list.
+    let p = try ConnectURI.parse(goldenURI)
+    #expect(p.urls == ["http://192.168.1.5:42720"])
+}
+
+@Test
+func dropsMalformedUrlsEntriesAndFallsBackIfAllDropped() throws {
+    // Non-http(s) candidates are filtered out; the canonical `url` is unaffected.
+    let mixed =
+        #"{"v":1,"url":"https://ok.example.com","urls":["ftp://nope","https://ok.example.com","http://10.0.0.2"],"user":"u","pwd":"p"}"#
+    #expect(try ConnectURI.parse(makeURI(mixed)).urls == ["https://ok.example.com", "http://10.0.0.2"])
+    // An all-bad list collapses to `[url]` via the Payload fallback.
+    let allBad =
+        #"{"v":1,"url":"https://ok.example.com","urls":["ftp://nope"],"user":"u","pwd":"p"}"#
+    #expect(try ConnectURI.parse(makeURI(allBad)).urls == ["https://ok.example.com"])
 }

@@ -4220,6 +4220,106 @@
           }
         }
       }
+    },
+    "局域网" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LAN"
+          }
+        }
+      }
+    },
+    "公网" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Internet"
+          }
+        }
+      }
+    },
+    "添加备用地址" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Alternate Address"
+          }
+        }
+      }
+    },
+    "同一服务器可填多个地址（局域网 / Tailscale / 公网），App 会按当前网络自动选用可达的一条；第一条为默认地址。左滑删除。局域网或自签名证书时勾选「允许不安全证书」，此设置全局生效。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One server can have several addresses (LAN / Tailscale / Internet); the app automatically uses whichever is reachable on the current network, with the first entry as the default. Swipe left to delete. Enable “Allow Insecure Certificates” for LAN or self-signed servers — the setting applies globally."
+          }
+        }
+      }
+    },
+    "请填写地址、用户名和密码" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter an address, username, and password"
+          }
+        }
+      }
+    },
+    "全部不可达 — 检查地址和网络" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None reachable — check addresses and network"
+          }
+        }
+      }
+    },
+    "将使用" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Will use"
+          }
+        }
+      }
+    },
+    "标注「将使用」的地址是当前网络下的首选；网络变化时会自动重选。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The address marked “Will use” is preferred on the current network; the choice updates automatically when the network changes."
+          }
+        }
+      }
+    },
+    "%lld 个地址" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld addresses"
+          }
+        }
+      }
+    },
+    "左滑可设为当前服务器或删除。每台服务器可填多个地址（局域网 / Tailscale / 公网），按当前网络自动选用。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe left to make a server current or delete it. Each server can have several addresses (LAN / Tailscale / Internet), picked automatically for the current network."
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

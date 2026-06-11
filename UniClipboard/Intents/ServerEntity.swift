@@ -40,12 +40,34 @@ struct ServerEntity: AppEntity, Identifiable {
     /// needs to talk to a server. A nil entity — the AppShortcut / Siri
     /// path where the user never picked one — falls back to `activeConfig`,
     /// preserving the pre-parameter behavior.
+    ///
+    /// Which *URL* of the resolved profile to try first is layered on per
+    /// §5.3: a background intent never probes, so — like the keyboard and
+    /// the share sheet — it reads the main app's last probe verdict
+    /// (`live_urls`) and falls back to pure shape order. The network signal
+    /// is the entitlement-free subset: the App-Group SSID stands in for
+    /// "on Wi-Fi", Tailscale is checked live via `getifaddrs`.
     @MainActor
-    static func resolveConfig(_ entity: ServerEntity?, in servers: ServerConfigList) -> ServerConfig? {
+    static func resolveConfig(
+        _ entity: ServerEntity?,
+        in servers: ServerConfigList,
+        store: SettingsStore
+    ) -> ServerConfig? {
+        var resolved: ServerConfig?
         if let entity, let hit = servers.configs.first(where: { $0.id == entity.id }) {
-            return hit
+            resolved = hit
+        } else {
+            resolved = servers.activeConfig
         }
-        return servers.activeConfig
+        guard var cfg = resolved else { return nil }
+        cfg.urls = cfg.preferredURLs(
+            live: store.loadLiveURL(configId: cfg.id),
+            network: NetworkContext(
+                ssid: store.loadLastKnownSSID(),
+                isTailscale: TailscaleDetector.isActive()
+            )
+        )
+        return cfg
     }
 }
 

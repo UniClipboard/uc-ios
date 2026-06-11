@@ -609,33 +609,51 @@ following the same JSON shape so users can migrate between platforms.
 
 ```jsonc
 {
-  "id":                  "uuid-v4-string",                  // required
-  "name":                "string | null",                   // optional, user-chosen label
-  "url":                 "https://...",                     // required, raw (not normalized)
-  "username":            "string",                          // required
-  "password":            "string",                          // required
-  "autoSwitchWifiNames": ["SSID-1", "SSID-2"],              // default: []  (only used when strategy = "wifi")
-  "autoSwitchStrategy":  "none|wifi|cellular|tailscale"     // default: "none"
+  "id":       "uuid-v4-string",                  // required
+  "name":     "string | null",                   // optional, user-chosen label
+  "url":      "https://...",                     // required; == urls[0]; raw (not normalized)
+  "urls":     ["https://...", "http://..."],     // ordered candidate base URLs; default: [url]
+  "username": "string",                          // required
+  "password": "string"                           // required
 }
 ```
 
 - `id`: stable UUID v4. Two configs with the same `id` are the same config.
 - `name`: human-readable label. If null/empty, the UI falls back to `url`.
-- `autoSwitchStrategy`: the **single** network condition under which this config
-  auto-activates (§5.3) — one of `none` (manual only), `wifi`, `cellular`,
-  `tailscale`.
-- `autoSwitchWifiNames`: the SSIDs for the `wifi` strategy; inert under any
-  other strategy.
+- A `ServerConfig` is **one logical server identity** (one credential pair, one
+  device id from the pairing QR) reachable at one or more candidate base URLs.
+- `urls`: the **ordered candidate base URLs**, each a complete base URL (the
+  publisher omits the trailing slash; readers MUST tolerate one). The network
+  decides which candidate is used *right now* (§5.3). Never empty for a valid
+  config.
+- `url`: the canonical base URL, kept **identical to `urls[0]`**. It exists so a
+  reader that only knows the old single-URL shape still works. On encode the
+  client writes **both** keys.
 
-`autoSwitchStrategy` default-decodes to `none`. **Migration**: data written
-before this field existed has no `autoSwitchStrategy`, so a non-empty
-`autoSwitchWifiNames` maps to `wifi`, otherwise `none`. An unknown raw value
-also degrades to `none`.
+**Migration.** When persisted data (or a pairing payload) carries only the
+legacy single `url` and no `urls`, the client fills `urls = [url]`. Pre-this-spec
+data also carried per-config auto-switch keys (`autoSwitchStrategy`,
+`autoSwitchWifiNames`): these are **decoded-and-dropped** — tolerated on read,
+never re-encoded. Auto-switch no longer selects *between* profiles; it selects
+between a single profile's `urls` (§5.3).
+
+#### URL classification (host shape)
+
+A candidate URL is classified by the kind of network path its **host** reaches,
+from the host alone — no DNS resolution, no probing:
+
+| Class | Host matches |
+|---|---|
+| `tailscale` | IPv4 in `100.64.0.0/10` (Tailscale CGNAT), or a `*.ts.net` MagicDNS name |
+| `lan` | IPv4 in `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, or a `*.local` mDNS name |
+| `wan` | anything else (a public IP or any other hostname) |
 
 #### SSID normalization rule
 
-Both stored SSIDs and the system-reported current SSID MUST be normalized
-identically before comparison:
+SSID *names* are no longer matched for auto-switch (that is URL-shape based
+now), but a normalized SSID still flows cross-process as a "which Wi-Fi am I on"
+signal. Both stored SSIDs and the system-reported current SSID MUST be
+normalized identically:
 
 1. Trim whitespace.
 2. If empty after trim → treat as "no SSID".
@@ -667,72 +685,107 @@ promote a resolvable `manualOverrideConfigId` into `activeConfigId` (the user's
 last explicit pick becomes the current server) and MUST NOT re-encode the key.
 An absent or unresolvable value is ignored.
 
-### 5.3 Network-based auto-switch (effective active config)
+### 5.3 Network-based URL auto-switch (effective URL within the active profile)
 
-The **effective** active server is resolved on every network change as an
-on-demand overlay over the manual baseline (`activeConfig`, §5.2). This is a
-*pure read* — it never rewrites `activeConfigId`. The manual pick stays the
-persisted baseline; network rules override it transiently, so leaving a matched
-network restores the baseline automatically and no two processes race to write
-the active id. The main app and the keyboard extension both resolve through the
-same function, so they agree on which server is in use.
+Which **profile** is active is purely the user's manual pick (`activeConfig`,
+§5.2) — it does **not** change with the network. What the network changes is
+which of that profile's **`urls`** is used right now. So a user with one server
+reachable over LAN, Tailscale, and a public relay configures one profile with
+three `urls`, and the device picks the fastest reachable path automatically.
+
+Resolution has two layers:
+
+**Layer 1 — shape ordering (pure, no I/O).** Both the main app and the keyboard
+extension compute a *try-order* over the active profile's `urls` from the
+current network. This never does I/O and never rewrites persisted state.
 
 The device's current network is captured as a `NetworkContext`:
 
 ```
 NetworkContext = {
   ssid:        string | null   # normalized §5.1 SSID; null when not on a named Wi-Fi
+  isWifi:      bool            # primary path uses Wi-Fi (OS network path)
   isCellular:  bool            # primary path is cellular data
   isTailscale: bool            # a Tailscale virtual network is up (see below)
 }
 ```
 
-`isCellular` / interface type come from the OS network path, and `isTailscale`
-from enumerating local interfaces — neither needs any permission. The SSID
-*name* needs the Wi-Fi-info entitlement + Location, so a client that can't read
-it (e.g. the keyboard extension) supplies `ssid = null` and relies on the other
-dimensions.
+`isWifi` / `isCellular` / interface type come from the OS network path, and
+`isTailscale` from enumerating local interfaces — none needs any permission. The
+SSID *name* needs the Wi-Fi-info entitlement + Location; a client that can't read
+it (e.g. the keyboard extension) supplies `ssid = null`. SSID name is no longer
+matched — it only acts as a fallback "on Wi-Fi" signal when `isWifi` is unset.
 
 **Tailscale detection.** `isTailscale` is true iff a local interface holds an
 IPv4 address in Tailscale's CGNAT range **100.64.0.0/10** (via `getifaddrs`).
 This pins it to Tailscale rather than "some VPN", and works from any process.
 
 ```
-def effectiveActiveConfig(list, network):
-    return resolveAutoSwitch(list, network) or getActiveConfig(list)   # §5.2 fallback
+def orderedURLs(cfg, network):                        # stable reorder of cfg.urls
+    pref = classPreference(network)                   # or None → keep publisher order
+    if pref is None: return cfg.urls
+    return stable_sort(cfg.urls, key=lambda u: index_or_end(pref, classify(u)))
 
-def resolveAutoSwitch(list, network):                 # rule-selected config, or None
-    current = getActiveConfig(list)
-    def pick(matches):                                # anti-flap: keep active if it qualifies
-        if not matches: return None
-        return first(m for m in matches if m.id == current.id) or matches[0]
-    if network.isTailscale:                           # P1 — Tailscale (overlays the link)
-        hit = pick([c for c in list.configs if c.autoSwitchStrategy == "tailscale"])
-        if hit: return hit
-    if network.ssid is not None:                      # P2 — a wifi-strategy config listing the SSID
-        hit = pick([c for c in list.configs
-                    if c.autoSwitchStrategy == "wifi" and c.matchesWifiName(network.ssid)])
-        if hit: return hit
-    if network.isCellular:                            # P3 — a cellular-strategy config
-        hit = pick([c for c in list.configs if c.autoSwitchStrategy == "cellular"])
-        if hit: return hit
-    return None
+def classPreference(network):                         # most-preferred class first
+    onWifi = network.isWifi or network.ssid is not None
+    if onWifi:              return ["lan", "tailscale", "wan"]   # direct LAN is lowest-latency
+    if network.isTailscale: return ["tailscale", "wan", "lan"]  # off-Wi-Fi, TS up (e.g. cellular)
+    if network.isCellular:  return ["wan", "tailscale", "lan"]  # LAN unreachable; TS may tunnel
+    return None                                                  # no signal → publisher order
+
+def effectiveActiveConfig(list, network):
+    cfg = getActiveConfig(list)                       # §5.2 — unchanged by the network
+    return cfg.with(urls = orderedURLs(cfg, network)) if cfg else None
 ```
 
-Priority is **P1 Tailscale > P2 named Wi-Fi > P3 cellular > manual baseline**.
-Each config picks exactly one strategy. Tailscale is on top because it overlays
-whatever the physical link is — when it's up and a config opts in, it wins over
-the Wi-Fi the device is physically on; if no config opted into Tailscale,
-resolution falls through to the Wi-Fi / cellular tiers. Within a tier the active
-config wins if it qualifies (anti-flap); otherwise `configs` order decides
-(first-wins). Nothing matches → manual baseline.
+`orderedURLs` is a **stable** sort: a more-preferred class moves ahead, but
+within one class (and when the network gives no signal) the publisher's order is
+preserved. Reachability is **not** consulted here — this only decides the
+*try-order*. The keyboard extension uses `urls[0]` of the result as its best
+guess (no probing, no entitlement).
 
-`cfg.matchesWifiName(ssid)` returns `true` iff the normalized `ssid` is
-contained in the normalized `cfg.autoSwitchWifiNames`.
+**Layer 2 — reachability probing (main app only).** The shape order is a guess
+(e.g. a LAN URL ranks first on Wi-Fi even on a foreign network where it is
+unreachable). The main app probes the ordered candidates **concurrently** and
+adopts the first *in shape order* that is reachable as the profile's **live
+URL** (deterministic given the probe results — NOT a connection race; two
+reachable candidates resolve to whichever ranks earlier). All-unreachable
+clears the live URL, and readers fall back to pure shape order.
 
-A client MAY surface the effective server differently from the baseline (e.g. an
-"auto" badge) so the user understands why the active server changed without a
-manual pick.
+Probe semantics:
+
+- One `GET /SyncClipboard.json` per candidate with a **short timeout** (~2 s
+  — a candidate that can't work on this network must fail fast), no retry,
+  no body decode.
+- **`404` counts as reachable** (§2.1: server up, clipboard empty).
+- **`401` counts as reachable** — wrong credentials are an account problem,
+  not a path problem; the sync engine surfaces auth failures on its own and
+  the picker must not skip a working direct path because the password is
+  stale.
+
+Probes run on: network change, profile switch, app foreground, a
+network-class sync failure (debounced — the 1 Hz tick retries failures every
+second), and the user's explicit "test connection" (which SHOULD probe all
+candidates and present per-URL reachability). In steady state the 1 Hz sync
+tick *is* the probe of the live URL; no background probing beyond the
+triggers above.
+
+The effective try-order layers the verdict over the shape order: the live URL
+leads, remaining candidates follow in shape order as fallbacks
+(`preferredURLs`). A persisted live URL that is no longer in the profile's
+`urls` (the config was edited since the probe) MUST be ignored, not
+resurrected. Switching the live URL *within* a profile MUST NOT reset
+per-server sync state (watermarks, last-synced hash) — it is the same server
+and the same content timeline.
+
+The live URL is cached cross-process per profile (`{configId: url}`; this
+client: a JSON file in the App Group container, written atomically by the
+main app only) so the keyboard extension reads the app's confirmed choice
+instead of re-probing; absent a cached value it falls back to Layer 1's
+`urls[0]`.
+
+A client MAY surface which URL is in use (e.g. a "direct / relay" badge) so the
+user understands why latency changed without a manual pick.
 
 ### 5.4 `AppSettings`
 

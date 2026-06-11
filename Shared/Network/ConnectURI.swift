@@ -18,7 +18,13 @@ public enum ConnectURI {
     /// `other` dict is forward-compatible — unknown keys land here and
     /// callers pick what they understand (today: `did`, `label`, `proto`).
     public struct Payload: Equatable, Hashable, Sendable, Identifiable {
+        /// The canonical base URL. Equals `urls[0]`. Old clients read only
+        /// this; new clients prefer `urls`.
         public let url: String
+        /// §4 — ordered candidate base URLs for network-based switching.
+        /// Always non-empty: when the QR omits `urls` (single-URL pairing,
+        /// where the desktop skips the field), this is `[url]`.
+        public let urls: [String]
         public let user: String
         public let pwd: String
         public let other: [String: String]
@@ -33,8 +39,11 @@ public enum ConnectURI {
         /// same import).
         public var id: String { url }
 
-        public init(url: String, user: String, pwd: String, other: [String: String]) {
+        public init(url: String, urls: [String]? = nil, user: String, pwd: String, other: [String: String]) {
             self.url = url
+            // Fall back to the single `url` when no candidate list is given,
+            // so consumers can always read `urls` without a nil check.
+            self.urls = (urls?.isEmpty == false) ? urls! : [url]
             self.user = user
             self.pwd = pwd
             self.other = other
@@ -132,10 +141,19 @@ public enum ConnectURI {
         let pwd       = try requiredString("pwd")
 
         // §5 in the spec: URL must be http(s).
-        guard let parsed = URL(string: urlString),
-              let urlScheme = parsed.scheme?.lowercased(),
-              urlScheme == "http" || urlScheme == "https"
-        else { throw ParseError.invalidURL(detail: urlString) }
+        guard isHTTPURL(urlString) else { throw ParseError.invalidURL(detail: urlString) }
+
+        // §4: optional ordered candidate list. Each entry is a full base URL;
+        // keep only well-formed http(s) strings (a hand-edited / future entry
+        // we can't use is dropped, not fatal). An absent / all-dropped list
+        // falls back to `[url]` inside `Payload.init`. We do NOT force
+        // `urls[0] == url` — the desktop guarantees it; if a malformed QR
+        // disagrees, the canonical `url` (already validated) still wins as the
+        // first try via the init's fallback only when the list is empty.
+        let urls: [String]? = (dict["urls"] as? [Any])?
+            .compactMap { $0 as? String }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { isHTTPURL($0) }
 
         // §3.2: forward-compatible — drop non-string `o.*` values silently.
         var other: [String: String] = [:]
@@ -145,7 +163,16 @@ public enum ConnectURI {
             }
         }
 
-        return Payload(url: urlString, user: user, pwd: pwd, other: other)
+        return Payload(url: urlString, urls: urls, user: user, pwd: pwd, other: other)
+    }
+
+    /// True iff `s` parses as an http(s) URL — the §5 scheme gate, shared by
+    /// the canonical `url` and each `urls` candidate.
+    private static func isHTTPURL(_ s: String) -> Bool {
+        guard let parsed = URL(string: s),
+              let scheme = parsed.scheme?.lowercased()
+        else { return false }
+        return scheme == "http" || scheme == "https"
     }
 
     /// base64url-no-pad → Data. Matches Rust `URL_SAFE_NO_PAD` and the

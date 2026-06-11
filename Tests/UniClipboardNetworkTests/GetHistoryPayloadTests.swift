@@ -107,8 +107,7 @@ final class GetHistoryPayloadTests: XCTestCase {
             name: nil,
             url: baseURLString,
             username: username,
-            password: password,
-            autoSwitchWifiNames: []
+            password: password
         )
         return try SyncClipboardClient(server: cfg, trustInsecureCert: false, session: MockURLProtocol.session())
     }

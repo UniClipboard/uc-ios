@@ -62,7 +62,7 @@ fixtures conform to. Section numbers below reference that document.
 
 | File | Persistence key | Notes |
 |---|---|---|
-| `server_config_list.json` | `server_config_list` | Three configs covering: (1) named config with multiple SSIDs, (2) named config with one SSID, (3) unnamed config (no `name` key) with empty SSID list. `activeConfigId` points at config #3. |
+| `server_config_list.json` | `server_config_list` | Three configs covering: (1) named config with a multi-URL `urls` candidate list spanning wan/lan/tailscale shapes, (2) named single-URL config, (3) unnamed single-URL config (no `name` key). Every config carries `url` (== `urls[0]`) **and** `urls`. `activeConfigId` points at config #3. |
 | `server_config_legacy.json` | `server_config` (legacy) | Single-config format used before the multi-server feature. If a client finds **only** this key, it MUST migrate to the new format (§5.5): wrap into a `ServerConfigList`, allocate a fresh UUID v4, set as active, write the new key, delete the old key. |
 | `app_settings.json` | `app_settings` | Every field set to a non-default value, exercising `ignoredVersion` (a non-null optional). |
 | `app_settings_minimal.json` | `app_settings` | Only the required fields. `ignoredVersion` is **omitted** (not `null`) — verify your decoder handles this case and your encoder produces this shape when the value is `nil`. |
@@ -78,7 +78,10 @@ fixtures conform to. Section numbers below reference that document.
 
 - `server_config.name` is optional. Missing key, `null`, and empty string
   must all be treated equivalently for display fallback (§5.1).
-- `autoSwitchWifiNames` defaults to `[]` when absent.
+- `urls` is the source of truth when present and non-empty; when absent (or
+  empty) the decoder falls back to `[url]`. On encode, both `url` (== `urls[0]`)
+  and `urls` are written. Pre-this-spec per-config auto-switch keys
+  (`autoSwitchStrategy`, `autoSwitchWifiNames`) are tolerated on read and dropped.
 - `ServerConfigList.activeConfigId` may point at an id that no longer
   exists in `configs`. Your getter for the "active config" must fall
   back to `configs[0]` in that case (and return `nil` if `configs` is

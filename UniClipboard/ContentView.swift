@@ -203,6 +203,12 @@ struct ContentView: View {
                 // (`effectiveActiveConfig`) right away instead of waiting for
                 // the next NWPathMonitor callback.
                 vm.ssidProvider.refresh()
+                // …and re-probe the candidate URLs (§5.3 Layer 2): the URL
+                // that was live before backgrounding may be unreachable on
+                // the network we woke up on. If the SSID refresh above also
+                // fires onNetworkChanged, the in-flight dedup collapses the
+                // two kicks into one probe.
+                vm.kickLiveEndpointRefresh(force: true)
                 vm.engine.isSceneInactive = false
                 vm.engine.start()
             case .background:

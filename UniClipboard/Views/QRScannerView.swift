@@ -22,8 +22,18 @@ import VisionKit
 struct ServerQRPayload: Codable, Equatable, Sendable {
     var name: String?
     var url: String
+    /// §5.6 ordered candidate list (`urls[0] == url`). Nil/empty when the
+    /// QR predates multi-URL; read through `effectiveURLs`.
+    var urls: [String]? = nil
     var username: String
     var password: String
+
+    /// The candidate list to provision, never empty: `urls` when the QR
+    /// carried one, else the single legacy `url`.
+    var effectiveURLs: [String] {
+        if let urls, !urls.isEmpty { return urls }
+        return [url]
+    }
 
     static func parse(_ raw: String) -> ServerQRPayload? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -33,7 +43,7 @@ struct ServerQRPayload: Codable, Equatable, Sendable {
         if trimmed.lowercased().hasPrefix("uniclipboard://") {
             guard let p = try? ConnectURI.parse(trimmed) else { return nil }
             return ServerQRPayload(
-                name: p.label, url: p.url, username: p.user, password: p.pwd
+                name: p.label, url: p.url, urls: p.urls, username: p.user, password: p.pwd
             )
         }
 

@@ -9,8 +9,16 @@ import Darwin
 /// from `getifaddrs` (neither needs an entitlement); the SSID name comes from
 /// the App Group, which the app writes.
 public struct NetworkContext: Equatable, Sendable {
-    /// Normalized §5.1 SSID, or `nil` when not on a named Wi-Fi.
+    /// Normalized §5.1 SSID, or `nil` when not on a named Wi-Fi. The name is
+    /// no longer matched for auto-switch (§5.3 is URL-based now); it survives
+    /// only as a "which Wi-Fi" cross-process signal and as a fallback wifi
+    /// indicator for clients that don't populate `isWifi`.
     public var ssid: String?
+    /// The primary path uses Wi-Fi. Comes from the OS network path
+    /// (`NWPath.usesInterfaceType(.wifi)`) — no entitlement, unlike the SSID
+    /// *name*. Drives the §5.3 URL ordering's "prefer the LAN URL on Wi-Fi"
+    /// rule even when the SSID name can't be read (Location denied).
+    public var isWifi: Bool
     /// The primary path is cellular data.
     public var isCellular: Bool
     /// A Tailscale virtual network is up — a local interface holds an IPv4 in
@@ -18,8 +26,14 @@ public struct NetworkContext: Equatable, Sendable {
     /// when it's up it wins over the Wi-Fi the device is physically on.
     public var isTailscale: Bool
 
-    public init(ssid: String? = nil, isCellular: Bool = false, isTailscale: Bool = false) {
+    public init(
+        ssid: String? = nil,
+        isWifi: Bool = false,
+        isCellular: Bool = false,
+        isTailscale: Bool = false
+    ) {
         self.ssid = ssid
+        self.isWifi = isWifi
         self.isCellular = isCellular
         self.isTailscale = isTailscale
     }

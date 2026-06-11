@@ -39,6 +39,15 @@ public final class SettingsStore: @unchecked Sendable {
     /// App Group suite per-process.
     static let lastKnownSSIDFilename = "last_known_ssid"
 
+    /// Filename of the file-backed live-URL map under `containerURL`. JSON
+    /// `{configId: url}` — for each profile, the candidate URL the main
+    /// app's most recent §5.3 probe confirmed reachable. Only the main app
+    /// writes it (extensions never probe); the keyboard extension reads it
+    /// as its best guess before falling back to pure shape order. File-
+    /// backed (not `UserDefaults`) for the same cross-process-freshness
+    /// reason as the two files above.
+    static let liveURLsFilename = "live_urls"
+
     private let defaults: UserDefaults
     private let containerURL: URL
     private let encoder: JSONEncoder
@@ -258,6 +267,43 @@ public final class SettingsStore: @unchecked Sendable {
         } else {
             try? FileManager.default.removeItem(at: lastKnownSSIDFileURL)
         }
+    }
+
+    // MARK: - Live URL per profile (§5.3 probe result, cross-process)
+
+    private var liveURLsFileURL: URL {
+        containerURL.appendingPathComponent(SettingsStore.liveURLsFilename, isDirectory: false)
+    }
+
+    /// The probe-confirmed URL for `configId`, or nil when the last probe
+    /// found nothing reachable (or never ran). Readers must validate the
+    /// value against the config's current `urls` — an edit may have removed
+    /// the candidate since the probe wrote it.
+    public func loadLiveURL(configId: String) -> String? {
+        loadLiveURLMap()[configId]
+    }
+
+    /// Persist (or with nil, clear) the probe-confirmed URL for `configId`.
+    /// Main-app only — extensions read, never write. Atomic write, same
+    /// guarantee as the sibling files: a cross-process reader sees either
+    /// the old map or the new one.
+    public func saveLiveURL(configId: String, _ url: String?) {
+        var map = loadLiveURLMap()
+        if map[configId] == url { return }
+        map[configId] = url
+        if map.isEmpty {
+            try? FileManager.default.removeItem(at: liveURLsFileURL)
+            return
+        }
+        guard let data = try? encoder.encode(map) else { return }
+        try? data.write(to: liveURLsFileURL, options: [.atomic])
+    }
+
+    private func loadLiveURLMap() -> [String: String] {
+        guard let data = try? Data(contentsOf: liveURLsFileURL) else { return [:] }
+        // Corruption policy as everywhere in this store: an undecodable
+        // blob reads as "no live URL known", never blocks the caller.
+        return (try? decoder.decode([String: String].self, from: data)) ?? [:]
     }
 
     // MARK: - Clipboard history (cycle 11)

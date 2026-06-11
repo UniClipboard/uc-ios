@@ -294,16 +294,21 @@ final class KeyboardModel {
     /// active. This is what lets the keyboard follow a Wi-Fi→cellular switch
     /// even when the main app hasn't run to clear the stored SSID.
     private func currentNetworkContext() -> NetworkContext {
-        // Tailscale (P1) checked live — getifaddrs is cheap and needs no
+        // Tailscale checked live — getifaddrs is cheap and needs no
         // entitlement, so the keyboard follows Tailscale on its own.
         let tailscale = TailscaleDetector.isActive()
         if pathIsWifi {
-            return NetworkContext(ssid: store.loadLastKnownSSID(), isCellular: false, isTailscale: tailscale)
+            return NetworkContext(
+                ssid: store.loadLastKnownSSID(),
+                isWifi: true,
+                isCellular: false,
+                isTailscale: tailscale
+            )
         }
         if pathIsCellular {
-            return NetworkContext(ssid: nil, isCellular: true, isTailscale: tailscale)
+            return NetworkContext(ssid: nil, isWifi: false, isCellular: true, isTailscale: tailscale)
         }
-        return NetworkContext(ssid: nil, isCellular: false, isTailscale: tailscale)
+        return NetworkContext(ssid: nil, isWifi: false, isCellular: false, isTailscale: tailscale)
     }
 
     /// One poll iteration: if a sync isn't already running and the pasteboard
@@ -383,7 +388,19 @@ final class KeyboardModel {
         }
         reloadCards()
 
-        let server = servers.effectiveActiveConfig(network: currentNetworkContext())
+        // §5.3 from an extension: the keyboard never probes (its lifetime is
+        // measured in keystrokes), so it layers the main app's last probe
+        // verdict (`live_urls`, App Group) over pure shape order —
+        // `preferredURLs` puts the probe-confirmed URL first and falls back
+        // to `orderedURLs[0]` when no verdict exists for this profile.
+        let server: ServerConfig? = {
+            guard var cfg = servers.activeConfig else { return nil }
+            cfg.urls = cfg.preferredURLs(
+                live: store.loadLiveURL(configId: cfg.id),
+                network: currentNetworkContext()
+            )
+            return cfg
+        }()
         guard let server else {
             gate = .noServer
             store.saveLastSyncedChangeCount(cc)

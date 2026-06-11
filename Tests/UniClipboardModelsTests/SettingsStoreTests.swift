@@ -65,10 +65,9 @@ final class SettingsStoreTests: XCTestCase {
                 ServerConfig(
                     id: "abc",
                     name: "NAS",
-                    url: "https://nas.lan/",
+                    urls: ["https://nas.lan/", "http://192.168.0.9:5033"],
                     username: "u",
-                    password: "p",
-                    autoSwitchWifiNames: ["Home"]
+                    password: "p"
                 )
             ],
             activeConfigId: "abc"
@@ -112,7 +111,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(cfg.username, legacy.username)
         XCTAssertEqual(cfg.password, legacy.password)
         XCTAssertNil(cfg.name)
-        XCTAssertEqual(cfg.autoSwitchWifiNames, [])
+        XCTAssertEqual(cfg.urls, [legacy.url], "legacy single url → one-element candidate list")
         XCTAssertEqual(migrated.activeConfigId, cfg.id, "Migrated config must be marked active")
 
         XCTAssertNotNil(
@@ -395,6 +394,57 @@ final class SettingsStoreTests: XCTestCase {
         writer.saveLastKnownSSID("Home-5G")
         let reader = SettingsStore(defaults: defaults, containerURL: containerURL)
         XCTAssertEqual(reader.loadLastKnownSSID(), "Home-5G")
+    }
+
+    // MARK: - liveURL file backend (§5.3 probe result)
+
+    func test_loadLiveURL_whenEmpty_returnsNil() {
+        XCTAssertNil(makeStore().loadLiveURL(configId: "c1"))
+    }
+
+    func test_liveURL_saveThenLoad_roundTrips() {
+        let store = makeStore()
+        store.saveLiveURL(configId: "c1", "http://192.168.1.9:5033")
+        XCTAssertEqual(store.loadLiveURL(configId: "c1"), "http://192.168.1.9:5033")
+    }
+
+    func test_liveURL_nilClearsOnlyThatConfig() {
+        let store = makeStore()
+        store.saveLiveURL(configId: "c1", "http://192.168.1.9:5033")
+        store.saveLiveURL(configId: "c2", "https://wan.example")
+        store.saveLiveURL(configId: "c1", nil)
+        XCTAssertNil(store.loadLiveURL(configId: "c1"))
+        XCTAssertEqual(store.loadLiveURL(configId: "c2"), "https://wan.example")
+    }
+
+    func test_liveURL_isolatedPerConfigId() {
+        let store = makeStore()
+        store.saveLiveURL(configId: "c1", "http://192.168.1.9:5033")
+        store.saveLiveURL(configId: "c2", "https://wan.example")
+        XCTAssertEqual(store.loadLiveURL(configId: "c1"), "http://192.168.1.9:5033")
+        XCTAssertEqual(store.loadLiveURL(configId: "c2"), "https://wan.example")
+        store.saveLiveURL(configId: "c1", "https://host.ts.net")
+        XCTAssertEqual(store.loadLiveURL(configId: "c1"), "https://host.ts.net")
+        XCTAssertEqual(store.loadLiveURL(configId: "c2"), "https://wan.example")
+    }
+
+    func test_liveURL_writesAreVisibleToASecondStoreInstance() {
+        // Main-app-probes / keyboard-reads handshake — same cross-process
+        // freshness reason the synced hash + SSID use a file backend.
+        let writer = makeStore()
+        writer.saveLiveURL(configId: "c1", "http://192.168.1.9:5033")
+        let reader = SettingsStore(defaults: defaults, containerURL: containerURL)
+        XCTAssertEqual(reader.loadLiveURL(configId: "c1"), "http://192.168.1.9:5033")
+    }
+
+    func test_liveURL_corruptFileReadsAsAbsent() throws {
+        let store = makeStore()
+        let file = containerURL.appendingPathComponent("live_urls", isDirectory: false)
+        try Data("not json".utf8).write(to: file)
+        XCTAssertNil(store.loadLiveURL(configId: "c1"))
+        // And a write-through recovers the file.
+        store.saveLiveURL(configId: "c1", "https://wan.example")
+        XCTAssertEqual(store.loadLiveURL(configId: "c1"), "https://wan.example")
     }
 
     func test_loadAppSettings_unknownKeysAreTolerated() throws {

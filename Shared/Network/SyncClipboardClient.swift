@@ -269,8 +269,10 @@ public final class SyncClipboardClient: @unchecked Sendable {
 }
 
 /// Accepts any server trust — used only when the user opts into
-/// "trust insecure cert" for LAN/self-signed servers (§1).
-private final class TrustingDelegate: NSObject, URLSessionDelegate, Sendable {
+/// "trust insecure cert" for LAN/self-signed servers (§1). Internal (not
+/// private) so `ConnectionTester.probe`'s short-timeout session can carry
+/// the same trust policy.
+final class TrustingDelegate: NSObject, URLSessionDelegate, Sendable {
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,

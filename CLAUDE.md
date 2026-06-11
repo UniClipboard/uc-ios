@@ -61,8 +61,8 @@ Pass per-launch env via `SIMCTL_CHILD_<NAME>=value` exported in the shell callin
 | Env | Effect |
 |---|---|
 | `UC_INIT_TAB=0\|1` | Start on Clipboard / Settings tab |
-| `UC_FRESH=1` | Boot with empty `ServerConfigList` → forces SetupFlow |
-| `UC_SETUP_STEP=form\|autoswitch` | Bootstrap Setup `NavigationStack` path directly to that step |
+| `UC_FRESH=1` | Boot with empty `ServerConfigList` → first-run onboarding, then the 未配置 Home |
+| `UC_SETUP_STEP=form` | Bootstrap `SetupFlowView`'s path to the server form. **Currently inert** — ContentView no longer mounts SetupFlow; first-run pairing goes through Home/Settings `AddServerSheet` (`UC_OPEN_ADD_SHEET=1`) |
 | `UC_PREFILL=1` | Prefill ServerForm fields with mock defaults |
 | `UC_PREFILL_TEST=success\|authFailed\|unreachable\|missingFields` | Seed ServerForm test-connection result on appear |
 | `UC_OPEN_SWITCHER=1` | Auto-present the ServerSwitcher sheet on Home (simctl has no synthetic-tap, so this is how the sheet gets screenshotted) |
@@ -137,11 +137,13 @@ UniClipboard/               # Main app target — UIKit/SwiftUI surface.
 ├── Sync/                   # SyncEngine (1Hz foreground tick) + SSID provider.
 ├── Mock/                   # In-memory fake state (servers / clipboard / history).
 ├── Views/
-│   ├── Setup/              # First-run flow (Welcome → ServerForm → AutoSwitch).
+│   ├── Setup/              # Legacy first-run flow (Welcome → ServerForm). Not
+│   │                       # mounted anywhere — pairing now goes through Home's
+│   │                       # AddServerSheet; kept compiling pending removal.
 │   └── *.swift             # HomeView (grouped time-descending list), SettingsView, components.
 ├── Localizable.xcstrings   # zh-Hans source, en translation.
 ├── AppViewModel.swift      # @Observable @MainActor root view-model.
-├── ContentView.swift       # Root: SetupFlow when configs.isEmpty, else TabView (剪贴板/设置).
+├── ContentView.swift       # Root: first-run OnboardingView, else Home (Settings is a sheet).
 └── UniClipboard.entitlements  # App Group + wifi-info entitlement.
 
 UniClipboardShare/          # Share Extension target — receives system-share

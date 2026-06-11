@@ -151,10 +151,16 @@ final class FixturesTests: XCTestCase {
         XCTAssertEqual(list.activeConfigId, "ff112233-4455-6677-8899-aabbccddeeff")
 
         XCTAssertEqual(list.configs[0].name, "Home NAS")
-        XCTAssertEqual(list.configs[0].autoSwitchWifiNames, ["Home-5G", "Home-2.4G"])
-        XCTAssertEqual(list.configs[1].autoSwitchWifiNames, ["Corp-WiFi"])
+        XCTAssertEqual(list.configs[0].urls, [
+            "https://203-0-113-10.sslip.io",
+            "http://192.168.1.10:5033",
+            "http://100.64.0.8:5033",
+        ])
+        XCTAssertEqual(list.configs[0].url, "https://203-0-113-10.sslip.io",
+                       "canonical url is urls[0]")
+        XCTAssertEqual(list.configs[1].urls, ["http://192.168.10.20:5033"])
         XCTAssertNil(list.configs[2].name)
-        XCTAssertEqual(list.configs[2].autoSwitchWifiNames, [])
+        XCTAssertEqual(list.configs[2].urls, ["https://clip.example.com"])
 
         XCTAssertEqual(list.activeConfig?.id, list.configs[2].id)
     }
@@ -188,110 +194,177 @@ final class FixturesTests: XCTestCase {
         XCTAssertEqual(cfg.displayLabel, "http://h")
     }
 
-    // MARK: - §5.3 network auto-switch resolver
+    // MARK: - §5.1 codec: urls / legacy url fallback
 
-    private func net(_ ssid: String? = nil, cellular: Bool = false, tailscale: Bool = false) -> NetworkContext {
-        NetworkContext(ssid: ssid, isCellular: cellular, isTailscale: tailscale)
+    func test_serverConfig_decode_urlsTakesPrecedenceOverLegacyUrl() throws {
+        let json = #"{"id":"a","url":"https://first","urls":["https://x","http://192.168.0.2"],"username":"u","password":"p"}"#
+        let cfg = try JSONDecoder().decode(ServerConfig.self, from: Data(json.utf8))
+        XCTAssertEqual(cfg.urls, ["https://x", "http://192.168.0.2"])
+        XCTAssertEqual(cfg.url, "https://x", "url accessor is urls[0]")
     }
 
-    func test_resolve_wifiStrategyMatchesSSID() {
-        // Only a `.wifi` config listing the SSID matches → it overrides baseline.
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
-        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p",
-                             autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .wifi)
-        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net("Home"))?.id, "b")
+    func test_serverConfig_decode_fallsBackToLegacyUrlWhenUrlsAbsentOrEmpty() throws {
+        let onlyURL = #"{"id":"a","url":"https://h","username":"u","password":"p"}"#
+        XCTAssertEqual(try JSONDecoder().decode(ServerConfig.self, from: Data(onlyURL.utf8)).urls, ["https://h"])
+        let emptyURLs = #"{"id":"a","url":"https://h","urls":[],"username":"u","password":"p"}"#
+        XCTAssertEqual(try JSONDecoder().decode(ServerConfig.self, from: Data(emptyURLs.utf8)).urls, ["https://h"])
     }
 
-    func test_resolve_wifiNamesInertUnlessStrategyIsWifi() {
-        // A config carries SSIDs but its strategy isn't .wifi → it does NOT
-        // auto-switch (single-strategy model; SSIDs only count under .wifi).
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
-        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p",
-                             autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .none)
-        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net("Home"))?.id, "a")
+    func test_serverConfig_decode_throwsWhenNeitherUrlsNorUrl() {
+        let json = #"{"id":"a","username":"u","password":"p"}"#
+        XCTAssertThrowsError(try JSONDecoder().decode(ServerConfig.self, from: Data(json.utf8)))
     }
 
-    func test_resolve_wifiKeepsActiveWhenItQualifies() {
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p",
-                             autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .wifi)
-        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p",
-                             autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .wifi)
-        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net("Home"))?.id, "a",
-                       "anti-flap: active config that fits stays")
+    func test_serverConfig_encode_emitsBothUrlAndUrls() throws {
+        let cfg = ServerConfig(id: "a", urls: ["https://x", "http://192.168.0.2"], username: "u", password: "p")
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(cfg)) as? [String: Any])
+        XCTAssertEqual(obj["url"] as? String, "https://x", "url == urls[0] for old readers")
+        XCTAssertEqual(obj["urls"] as? [String], ["https://x", "http://192.168.0.2"])
     }
 
-    func test_resolve_cellularStrategy() {
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
-        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p",
-                             autoSwitchStrategy: .cellular)
-        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net(cellular: true))?.id, "b")
+    func test_serverConfig_decode_ignoresLegacyAutoSwitchKeys() throws {
+        // The pre-multi-URL per-config auto-switch keys are tolerated on read
+        // and never re-encoded — auto-switch is between a profile's URLs now.
+        let json = #"{"id":"a","url":"http://a","username":"u","password":"p","autoSwitchWifiNames":["Home"],"autoSwitchStrategy":"wifi"}"#
+        let cfg = try JSONDecoder().decode(ServerConfig.self, from: Data(json.utf8))
+        XCTAssertEqual(cfg.urls, ["http://a"])
+        let reencoded = String(data: try JSONEncoder().encode(cfg), encoding: .utf8)!
+        XCTAssertFalse(reencoded.contains("autoSwitch"), "dropped legacy keys must not be re-encoded")
     }
 
-    func test_resolve_tailscaleBeatsWifi() {
-        // Tailscale is P1: up + a config opts in → it wins over the Wi-Fi the
-        // device is physically on.
-        let wifi = ServerConfig(id: "w", url: "http://w", username: "u", password: "p",
-                                autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .wifi)
-        let ts = ServerConfig(id: "t", url: "http://t", username: "u", password: "p",
-                              autoSwitchStrategy: .tailscale)
-        let list = ServerConfigList(configs: [wifi, ts], activeConfigId: "w")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net("Home", tailscale: true))?.id, "t")
-    }
-
-    func test_resolve_tailscaleUpButNoConfigFallsThroughToWifi() {
-        // Tailscale up but nobody opted into it → fall through to the Wi-Fi tier.
-        let wifi = ServerConfig(id: "w", url: "http://w", username: "u", password: "p",
-                                autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .wifi)
-        let cell = ServerConfig(id: "c", url: "http://c", username: "u", password: "p",
-                                autoSwitchStrategy: .cellular)
-        let list = ServerConfigList(configs: [wifi, cell], activeConfigId: "c")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net("Home", tailscale: true))?.id, "w")
-    }
-
-    func test_resolve_fallsBackToBaseline() {
-        // No tier matches → manual baseline (§5.2); empty list → nil.
-        let a = ServerConfig(id: "a", url: "http://a", username: "u", password: "p")
-        let b = ServerConfig(id: "b", url: "http://b", username: "u", password: "p",
-                             autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .wifi)
-        let list = ServerConfigList(configs: [a, b], activeConfigId: "a")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net("Cafe"))?.id, "a",
-                       "unconfigured Wi-Fi → baseline (no catch-all tier)")
-        XCTAssertEqual(list.effectiveActiveConfig(network: net())?.id, "a", "offline → baseline")
-        XCTAssertNil(ServerConfigList().effectiveActiveConfig(network: net("Home")),
-                     "empty list → nil, mirroring activeConfig")
-    }
-
-    func test_serverConfig_codable_roundTripsStrategy() throws {
-        let cfg = ServerConfig(id: "a", url: "http://a", username: "u", password: "p",
-                               autoSwitchWifiNames: ["Home"], autoSwitchStrategy: .tailscale)
+    func test_serverConfig_codable_roundTrips() throws {
+        let cfg = ServerConfig(id: "a", name: "N",
+                               urls: ["https://x", "http://10.0.0.5"], username: "u", password: "p")
         let back = try JSONDecoder().decode(ServerConfig.self, from: JSONEncoder().encode(cfg))
         XCTAssertEqual(back, cfg)
-        XCTAssertEqual(back.autoSwitchStrategy, .tailscale)
     }
 
-    func test_serverConfig_migratesLegacyWifiNamesToStrategy() throws {
-        // Pre-strategy JSON: a non-empty SSID list → .wifi; empty/absent → .none.
-        let withSSIDs = #"{"id":"a","url":"http://a","username":"u","password":"p","autoSwitchWifiNames":["Home"]}"#
-        XCTAssertEqual(try JSONDecoder().decode(ServerConfig.self, from: Data(withSSIDs.utf8)).autoSwitchStrategy, .wifi)
-        let noSSIDs = #"{"id":"b","url":"http://b","username":"u","password":"p"}"#
-        XCTAssertEqual(try JSONDecoder().decode(ServerConfig.self, from: Data(noSSIDs.utf8)).autoSwitchStrategy, AutoSwitchStrategy.none)
+    // MARK: - §5.1 URL classification (host shape)
+
+    func test_classifyURL() {
+        XCTAssertEqual(ServerConfig.classifyURL("http://192.168.1.5:42720"), .lan)
+        XCTAssertEqual(ServerConfig.classifyURL("http://10.0.0.5"), .lan)
+        XCTAssertEqual(ServerConfig.classifyURL("http://172.16.3.4"), .lan)
+        XCTAssertEqual(ServerConfig.classifyURL("http://172.32.0.1"), .wan, "outside the /12")
+        XCTAssertEqual(ServerConfig.classifyURL("http://169.254.1.1"), .lan)
+        XCTAssertEqual(ServerConfig.classifyURL("https://nas.local:5033"), .lan)
+        XCTAssertEqual(ServerConfig.classifyURL("http://100.64.0.5:42720"), .tailscale)
+        XCTAssertEqual(ServerConfig.classifyURL("http://100.128.0.5"), .wan, "outside the /10")
+        XCTAssertEqual(ServerConfig.classifyURL("https://box.tail-abc.ts.net"), .tailscale)
+        XCTAssertEqual(ServerConfig.classifyURL("https://203-0-113-10.sslip.io"), .wan)
+        XCTAssertEqual(ServerConfig.classifyURL("https://8.8.8.8"), .wan)
     }
 
-    func test_serverConfig_unknownStrategyDegradesToNone_notWifi() throws {
-        // §5.1: an *unknown* strategy raw value degrades to .none. The SSID-list
-        // → .wifi migration must apply ONLY when the key is absent (pre-strategy
-        // data) — a present-but-unknown value (a newer build's strategy, or
-        // null) must NOT inherit .wifi just because an SSID list is also present.
-        let unknownWithSSIDs = #"{"id":"a","url":"http://a","username":"u","password":"p","autoSwitchWifiNames":["Home"],"autoSwitchStrategy":"vpn"}"#
-        XCTAssertEqual(try JSONDecoder().decode(ServerConfig.self, from: Data(unknownWithSSIDs.utf8)).autoSwitchStrategy,
-                       AutoSwitchStrategy.none)
-        let nullStrategy = #"{"id":"b","url":"http://b","username":"u","password":"p","autoSwitchStrategy":null}"#
-        XCTAssertEqual(try JSONDecoder().decode(ServerConfig.self, from: Data(nullStrategy.utf8)).autoSwitchStrategy,
-                       AutoSwitchStrategy.none)
+    // MARK: - §5.3 network-based URL ordering
+
+    private func net(_ ssid: String? = nil, wifi: Bool = false,
+                     cellular: Bool = false, tailscale: Bool = false) -> NetworkContext {
+        NetworkContext(ssid: ssid, isWifi: wifi, isCellular: cellular, isTailscale: tailscale)
+    }
+
+    /// A profile reachable at [wan, lan, tailscale] in publisher order.
+    private var multiURL: ServerConfig {
+        ServerConfig(id: "m",
+                     urls: ["https://wan.example.com",
+                            "http://192.168.1.10:5033",
+                            "http://100.64.0.8:5033"],
+                     username: "u", password: "p")
+    }
+
+    func test_orderedURLs_onWifiPrefersLAN() {
+        XCTAssertEqual(multiURL.orderedURLs(network: net(wifi: true)),
+                       ["http://192.168.1.10:5033", "http://100.64.0.8:5033", "https://wan.example.com"])
+    }
+
+    func test_orderedURLs_ssidNameAloneCountsAsWifi() {
+        // A readable SSID implies on-Wi-Fi even when `isWifi` wasn't populated.
+        XCTAssertEqual(multiURL.orderedURLs(network: net("Home")).first, "http://192.168.1.10:5033")
+    }
+
+    func test_orderedURLs_offWifiTailscaleLeads() {
+        // Off Wi-Fi (e.g. cellular) with Tailscale up → the Tailscale URL leads,
+        // then WAN, then the unreachable LAN URL last.
+        XCTAssertEqual(multiURL.orderedURLs(network: net(tailscale: true)),
+                       ["http://100.64.0.8:5033", "https://wan.example.com", "http://192.168.1.10:5033"])
+    }
+
+    func test_orderedURLs_onWifiLANBeatsTailscale() {
+        // On Wi-Fi the direct LAN path wins even when Tailscale is also up —
+        // probing demotes LAN on a foreign network, so ranking it first is safe.
+        XCTAssertEqual(multiURL.orderedURLs(network: net(wifi: true, tailscale: true)),
+                       ["http://192.168.1.10:5033", "http://100.64.0.8:5033", "https://wan.example.com"])
+    }
+
+    func test_orderedURLs_onCellularPrefersWAN() {
+        XCTAssertEqual(multiURL.orderedURLs(network: net(cellular: true)),
+                       ["https://wan.example.com", "http://100.64.0.8:5033", "http://192.168.1.10:5033"])
+    }
+
+    func test_orderedURLs_noSignalKeepsPublisherOrder() {
+        XCTAssertEqual(multiURL.orderedURLs(network: net()), multiURL.urls)
+    }
+
+    func test_orderedURLs_stableWithinClass() {
+        // Two LAN URLs keep their original relative order on Wi-Fi.
+        let cfg = ServerConfig(id: "c",
+                               urls: ["http://192.168.1.2", "https://wan.example.com", "http://192.168.1.3"],
+                               username: "u", password: "p")
+        XCTAssertEqual(cfg.orderedURLs(network: net(wifi: true)),
+                       ["http://192.168.1.2", "http://192.168.1.3", "https://wan.example.com"])
+    }
+
+    // MARK: - §5.3 preferredURLs (probe verdict layered on shape order)
+
+    func test_preferredURLs_liveLeadsRestFollowShapeOrder() {
+        // Live = WAN (e.g. last probe ran on cellular), now on Wi-Fi:
+        // the confirmed URL still leads, fallbacks in Wi-Fi shape order.
+        XCTAssertEqual(
+            multiURL.preferredURLs(live: "https://wan.example.com", network: net(wifi: true)),
+            ["https://wan.example.com", "http://192.168.1.10:5033", "http://100.64.0.8:5033"]
+        )
+    }
+
+    func test_preferredURLs_liveAlreadyFirstIsIdentity() {
+        XCTAssertEqual(
+            multiURL.preferredURLs(live: "http://192.168.1.10:5033", network: net(wifi: true)),
+            multiURL.orderedURLs(network: net(wifi: true))
+        )
+    }
+
+    func test_preferredURLs_nilLiveFallsBackToShapeOrder() {
+        XCTAssertEqual(
+            multiURL.preferredURLs(live: nil, network: net(cellular: true)),
+            multiURL.orderedURLs(network: net(cellular: true))
+        )
+    }
+
+    func test_preferredURLs_staleLiveNotInUrlsIsIgnored() {
+        // The config was edited since the probe wrote the live URL — the
+        // removed candidate must not resurrect.
+        XCTAssertEqual(
+            multiURL.preferredURLs(live: "http://10.0.0.9:5033", network: net(wifi: true)),
+            multiURL.orderedURLs(network: net(wifi: true))
+        )
+    }
+
+    func test_effectiveActiveConfig_reordersActiveConfigUrls() {
+        let list = ServerConfigList(configs: [multiURL], activeConfigId: "m")
+        let eff = list.effectiveActiveConfig(network: net(wifi: true))
+        XCTAssertEqual(eff?.id, "m")
+        XCTAssertEqual(eff?.url, "http://192.168.1.10:5033",
+                       "effective url is the network-preferred candidate")
+    }
+
+    func test_effectiveActiveConfig_keepsActiveProfileNeverCrossesProfiles() {
+        // Auto-switch no longer crosses profiles: the active profile stays put,
+        // only its own URLs reorder.
+        let a = ServerConfig(id: "a", urls: ["http://10.0.0.1"], username: "u", password: "p")
+        let list = ServerConfigList(configs: [a, multiURL], activeConfigId: "a")
+        XCTAssertEqual(list.effectiveActiveConfig(network: net(tailscale: true))?.id, "a")
+    }
+
+    func test_effectiveActiveConfig_nilWhenEmpty() {
+        XCTAssertNil(ServerConfigList().effectiveActiveConfig(network: net(wifi: true)))
     }
 
     func test_legacyManualOverride_promotedToActiveConfigOnDecode() throws {
@@ -324,23 +397,27 @@ final class FixturesTests: XCTestCase {
         XCTAssertNil(ServerConfig.normalizeSSID("0x"))
     }
 
-    func test_effectiveActiveConfig_fromFixturePrefersWifiOverCellular() throws {
-        let data = try loadFixture("server_config_list")
-        let list = try JSONDecoder().decode(ServerConfigList.self, from: data)
-        // Active is config #3 (remote, strategy = cellular). On "Home-5G",
-        // config #1's Wi-Fi rule (P2) wins → config #1.
-        XCTAssertEqual(list.effectiveActiveConfig(network: net("Home-5G"))?.id,
-                       "0c1f2e3a-4b5c-6d7e-8f90-123456789abc")
-    }
-
-    func test_effectiveActiveConfig_fromFixtureCellularAndOffline() throws {
+    func test_effectiveActiveConfig_fromFixtureKeepsActiveProfileAcrossNetworks() throws {
         let data = try loadFixture("server_config_list")
         let list = try JSONDecoder().decode(ServerConfigList.self, from: data)
         let remoteId = "ff112233-4455-6677-8899-aabbccddeeff"
-        // Config #3's strategy is cellular → on cellular it's the effective server.
+        // The active profile (#3) is the user's pick and never changes with the
+        // network now — only a profile's own URL order does. #3 is single-URL,
+        // so its effective config is identical on every network.
+        XCTAssertEqual(list.effectiveActiveConfig(network: net(wifi: true))?.id, remoteId)
         XCTAssertEqual(list.effectiveActiveConfig(network: net(cellular: true))?.id, remoteId)
-        // Offline → no rule applies → the baseline (§5.2 active = #3) stands.
         XCTAssertEqual(list.effectiveActiveConfig(network: net())?.id, remoteId)
+    }
+
+    func test_orderedURLs_fromFixtureMultiURLConfig() throws {
+        let data = try loadFixture("server_config_list")
+        let list = try JSONDecoder().decode(ServerConfigList.self, from: data)
+        // Home NAS (#1) carries [wan, lan, tailscale]; the network floats the
+        // matching candidate to the front.
+        XCTAssertEqual(list.configs[0].orderedURLs(network: net(wifi: true)).first,
+                       "http://192.168.1.10:5033")
+        XCTAssertEqual(list.configs[0].orderedURLs(network: net(tailscale: true)).first,
+                       "http://100.64.0.8:5033")
     }
 
     func test_legacyServerConfig_migrationProducesActiveSingleConfig() throws {
@@ -355,7 +432,8 @@ final class FixturesTests: XCTestCase {
         XCTAssertEqual(migrated.activeConfigId, "fixed-uuid")
         XCTAssertEqual(migrated.configs[0].id, "fixed-uuid")
         XCTAssertNil(migrated.configs[0].name)
-        XCTAssertEqual(migrated.configs[0].autoSwitchWifiNames, [])
+        XCTAssertEqual(migrated.configs[0].urls, ["https://clip.home.lan:5033/"],
+                       "legacy single url becomes the one-element candidate list")
     }
 
     // MARK: - AppSettings persistence fixtures (§5.4)

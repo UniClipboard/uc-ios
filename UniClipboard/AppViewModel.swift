@@ -184,6 +184,9 @@ final class AppViewModel {
         // Seed bookkeeping + the cross-process SSID from the current state:
         // the keyboard then has a network to read even before the first
         // flip, and the first reconcile compares against the right baseline.
+        // The live URL persisted by the previous launch's probe is the best
+        // first guess until the foreground-triggered probe lands.
+        self.liveURL = servers.activeConfig.flatMap { store.loadLiveURL(configId: $0.id) }
         self.lastEffectiveServerId = self.activeServer?.id
         store.saveLastKnownSSID(self.ssidProvider.currentSSID)
         // Upgrade guard: an install that already has servers predates the
@@ -211,17 +214,29 @@ final class AppViewModel {
     }
 
     /// The server in use *right now* — the manual baseline (§5.2
-    /// `activeConfig`) with the Wi-Fi auto-switch overlay applied (§5.3
-    /// `effectiveActiveConfig`). When the current SSID matches a config's
-    /// `autoSwitchWifiNames`, that config wins automatically; otherwise the
-    /// last server the user picked from the home chip / Settings stands. The
-    /// override is a pure read — it never rewrites `activeConfigId` — so
-    /// leaving the matched network restores the manual pick on its own. Both
-    /// `servers` and `ssidProvider.currentSSID` are `@Observable`, so views
-    /// recompute when either changes.
+    /// `activeConfig`) with its candidate URLs re-ordered for the current
+    /// network AND the last probe's verdict (§5.3 `preferredURLs`): a
+    /// probe-confirmed `liveURL` leads, shape-ordered candidates follow as
+    /// fallbacks, so `urls[0]` (== `url`, what the per-tick client builder
+    /// reads) is the best-known path. Which *profile* is active stays the
+    /// user's manual pick — the network only re-orders that profile's URLs.
+    /// `servers`, `liveURL`, and `ssidProvider`'s fields are all
+    /// `@Observable`, so views recompute when any of them changes.
     var activeServer: ServerConfig? {
-        servers.effectiveActiveConfig(network: ssidProvider.networkContext)
+        guard var cfg = servers.activeConfig else { return nil }
+        cfg.urls = cfg.preferredURLs(live: liveURL, network: ssidProvider.networkContext)
+        return cfg
     }
+
+    /// In-memory mirror of the active profile's probe-confirmed URL (§5.3
+    /// Layer 2). Source of truth is the App Group `live_urls` file
+    /// (`SettingsStore.loadLiveURL`) — mirrored here because the store
+    /// isn't observable and `activeServer` is recomputed by SwiftUI on
+    /// every render. `nil` = last probe found nothing reachable, or no
+    /// probe ran yet (then `activeServer` falls back to pure shape order).
+    /// Hydrated on init and on profile switch; written by
+    /// `refreshLiveEndpoint()`.
+    private(set) var liveURL: String?
 
     /// Set the manual baseline server to `id`. Called by the home chip
     /// switcher and Settings. Going through the view-model keeps persistence
@@ -255,18 +270,103 @@ final class AppViewModel {
         let newId = activeServer?.id
         guard newId != lastEffectiveServerId else { return }
         lastEffectiveServerId = newId
+        // Different profile → its live URL is whatever the last probe
+        // persisted for *it* (possibly from a prior launch). Hydrate the
+        // mirror before the engine restarts so the first tick already hits
+        // the best-known URL, then re-probe to confirm it's still current.
+        liveURL = newId.flatMap { store.loadLiveURL(configId: $0) }
         engine?.handleActiveServerChanged()
+        if newId != nil { kickLiveEndpointRefresh(force: true) }
     }
 
-    /// Hook fired by `CurrentSSIDProvider.onNetworkChanged`. Two jobs: (1)
+    /// Hook fired by `CurrentSSIDProvider.onNetworkChanged`. Three jobs: (1)
     /// publish the current SSID to the App Group so the keyboard extension
     /// resolves the same on-demand server (`SettingsStore.saveLastKnownSSID`
     /// — `context.ssid` is nil on cellular / no-Wi-Fi, which clears the file
-    /// so the keyboard never trusts a stale name), and (2) reconcile the
-    /// engine in case the network change flipped the effective server (§5.3).
+    /// so the keyboard never trusts a stale name), (2) reconcile the engine
+    /// in case the change flipped the effective server, and (3) re-probe the
+    /// candidates — the URL that was reachable on the old network may not be
+    /// on the new one (§5.3 Layer 2).
     private func handleNetworkChanged(_ context: NetworkContext) {
         store.saveLastKnownSSID(context.ssid)
         reconcileActiveServer()
+        kickLiveEndpointRefresh(force: true)
+    }
+
+    // MARK: - §5.3 Layer 2: live-endpoint probing
+
+    /// In-flight probe, for deduplication — a second caller awaits the
+    /// running probe instead of stacking another. Not view state.
+    @ObservationIgnored
+    private var liveProbeTask: Task<Void, Never>?
+
+    /// When the last probe *finished*, for debouncing. The engine retries a
+    /// failing GET at 1Hz and asks for a re-probe on every failure; without
+    /// this window each tick would burn a full probe round against every
+    /// candidate.
+    @ObservationIgnored
+    private var lastLiveProbeAt: Date?
+
+    /// Minimum gap between non-forced probes. Forced probes (profile
+    /// switch, network change, foreground) bypass it — those events
+    /// invalidate the previous verdict by definition.
+    private static let liveProbeDebounce: TimeInterval = 10
+
+    /// Fire-and-forget wrapper for synchronous call sites (network-change
+    /// hook, scenePhase observer, engine tick).
+    func kickLiveEndpointRefresh(force: Bool = false) {
+        Task { await refreshLiveEndpoint(force: force) }
+    }
+
+    /// "测试连接" already probed every candidate of `configId` (§5.3) —
+    /// adopt its verdict as the profile's live URL instead of making the
+    /// engine re-discover it on the next failure. `url == nil` (nothing
+    /// reachable) clears the cache so readers fall back to shape order.
+    func adoptProbedLiveURL(configId: String, url: String?) {
+        store.saveLiveURL(configId: configId, url)
+        if servers.activeConfig?.id == configId, liveURL != url {
+            liveURL = url
+        }
+    }
+
+    /// §5.3 Layer 2 — probe the active profile's candidates on the current
+    /// network and persist the first reachable one (shape order, NOT a
+    /// race) as the profile's live URL; all-unreachable persists nil so
+    /// readers fall back to pure shape order. The engine is *not* reset
+    /// when the URL flips within the same profile — same server, same
+    /// content timeline, so the sync watermarks stay valid; the per-tick
+    /// client rebuild picks the new `urls[0]` up automatically.
+    func refreshLiveEndpoint(force: Bool = false) async {
+        if let inflight = liveProbeTask {
+            await inflight.value
+            return
+        }
+        guard let base = servers.activeConfig else { return }
+        if !force, let last = lastLiveProbeAt,
+           Date.now.timeIntervalSince(last) < Self.liveProbeDebounce {
+            return
+        }
+        let ordered = base.orderedURLs(network: ssidProvider.networkContext)
+        let trust = appSettings.trustInsecureCert
+        let task = Task { [weak self] in
+            let results = await ConnectionTester.probe(
+                urls: ordered,
+                username: base.username,
+                password: base.password,
+                trustInsecureCert: trust
+            )
+            let picked = ConnectionTester.firstReachable(in: ordered, results: results)
+            guard let self else { return }
+            self.lastLiveProbeAt = .now
+            // The user switched profiles while the probe was in flight —
+            // these results describe the old profile's candidates.
+            guard self.servers.activeConfig?.id == base.id else { return }
+            self.store.saveLiveURL(configId: base.id, picked)
+            if self.liveURL != picked { self.liveURL = picked }
+        }
+        liveProbeTask = task
+        await task.value
+        liveProbeTask = nil
     }
 
     /// Entry point for `.onOpenURL`. Parses the incoming URL as a
@@ -307,8 +407,9 @@ final class AppViewModel {
     /// to it. Called by `ConnectImportSheet` after the user confirms.
     /// `label` becomes the human-friendly name; missing label falls back
     /// to nil (the `displayLabel` getter handles URL-as-fallback per §5.1).
-    /// SSID auto-switch is not carried over from the QR — the connect URI
-    /// doesn't have a place for it and the user can edit later.
+    /// The full §4 candidate list (`payload.urls` — already validated and
+    /// never empty) carries over, so a QR published with lan+tailscale+wan
+    /// alternates auto-switches from the first tick.
     func acceptPendingImport(_ payload: ConnectURI.Payload) {
         var list = servers
         let name = payload.label.flatMap {
@@ -318,16 +419,13 @@ final class AppViewModel {
         let config = ServerConfig(
             id: UUID().uuidString.lowercased(),
             name: name,
-            url: payload.url,
+            urls: payload.urls,
             username: payload.user,
-            password: payload.pwd,
-            autoSwitchWifiNames: []
+            password: payload.pwd
         )
         list.configs.append(config)
         // The user just expressed intent to use this new server — make it
-        // the current one. A pre-existing autoSwitchWifiNames rule on
-        // another server can only *suggest* a switch now, never silently
-        // take over, so there's nothing to guard against here.
+        // the current one.
         list.activeConfigId = config.id
         servers = list
         pendingImport = nil

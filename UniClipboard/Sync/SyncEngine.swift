@@ -508,12 +508,26 @@ final class SyncEngine {
             log.error("tick: SyncError kind=\(String(describing: e.kind), privacy: .public) consecutiveFailures=\(self.consecutiveFailures, privacy: .public) underlying=\(e.underlying ?? "nil", privacy: .public)")
             state = .offlineRetrying
             lastError = e
+            // A network-shaped failure may mean the *URL* died, not the
+            // server (left the LAN, Tailscale dropped) — ask the VM to
+            // re-probe the candidates so the next tick's client builds
+            // against a path that works (§5.3 Layer 2). Non-forced: the
+            // VM's debounce absorbs the 1Hz failure cadence. A successful
+            // tick is the implicit confirmation of the current URL, so
+            // there's no mirror call on the happy path.
+            switch e.kind {
+            case .networkUnreachable, .connectTimeout, .receiveTimeout:
+                vm.kickLiveEndpointRefresh()
+            default:
+                break
+            }
         } catch {
             consecutiveFailures += 1
             nextNetworkAttemptAt = Date().addingTimeInterval(currentBackoffSeconds())
             log.error("tick: unexpected error consecutiveFailures=\(self.consecutiveFailures, privacy: .public): \(String(describing: error), privacy: .public)")
             state = .offlineRetrying
             lastError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
+            vm.kickLiveEndpointRefresh()
         }
     }
 

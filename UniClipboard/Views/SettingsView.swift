@@ -147,12 +147,16 @@ struct SettingsView: View {
                 ServersListView(
                     servers: $vm.servers,
                     trustInsecureCert: $vm.appSettings.trustInsecureCert,
-                    ssidProvider: ssidProvider
+                    ssidProvider: ssidProvider,
+                    onProbed: { configId, summary in
+                        vm.adoptProbedLiveURL(configId: configId, url: summary.picked)
+                    }
                 )
             case .serverEdit(let index):
                 // Bounds-check defensively because deep-link env hooks
                 // can specify an invalid index after configs change.
                 if vm.servers.configs.indices.contains(index) {
+                    let configId = vm.servers.configs[index].id
                     ServerEditView(
                         server: $vm.servers.configs[index],
                         trustInsecureCert: $vm.appSettings.trustInsecureCert,
@@ -163,7 +167,10 @@ struct SettingsView: View {
                                 .lazy
                                 .filter { $0.offset != index }
                                 .compactMap { $0.element.name }
-                        )
+                        ),
+                        onProbed: { summary in
+                            vm.adoptProbedLiveURL(configId: configId, url: summary.picked)
+                        }
                     )
                 } else {
                     Text("服务器已不存在")
@@ -182,6 +189,9 @@ private struct ServersListView: View {
     @Binding var servers: ServerConfigList
     @Binding var trustInsecureCert: Bool
     let ssidProvider: CurrentSSIDProvider
+    /// (configId, probe outcome) from a child edit page's "测试连接" —
+    /// bubbled up to `AppViewModel.adoptProbedLiveURL` (§5.3 seed).
+    var onProbed: ((String, ProbeSummary) -> Void)? = nil
 
     @State private var pendingDelete: ServerConfig?
     @State private var addDraft: ServerDraft?
@@ -203,7 +213,10 @@ private struct ServersListView: View {
                                 server: $server,
                                 trustInsecureCert: $trustInsecureCert,
                                 ssidProvider: ssidProvider,
-                                existingNames: existingNames(excludingId: server.id)
+                                existingNames: existingNames(excludingId: server.id),
+                                onProbed: { [id = server.id] summary in
+                                    onProbed?(id, summary)
+                                }
                             )
                         } label: {
                             ServerRow(
@@ -236,7 +249,7 @@ private struct ServersListView: View {
                     }
                 }
             } footer: {
-                Text("左滑可设为当前服务器或删除。每个配置可设自动切换策略（指定 Wi-Fi / 蜂窝 / Tailscale）。")
+                Text("左滑可设为当前服务器或删除。每台服务器可填多个地址（局域网 / Tailscale / 公网），按当前网络自动选用。")
                     .font(.caption)
             }
 
@@ -342,14 +355,14 @@ private struct ServersListView: View {
 
     private func commit(draft: ServerDraft) {
         let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let urls = draft.cleanedURLs
+        guard !urls.isEmpty else { return }   // canSave gates this; belt-and-braces
         let server = ServerConfig(
             id: UUID().uuidString.lowercased(),
             name: trimmedName.isEmpty ? nil : trimmedName,
-            url: draft.url.trimmingCharacters(in: .whitespacesAndNewlines),
+            urls: urls,
             username: draft.username,
-            password: draft.password,
-            autoSwitchWifiNames: draft.ssids,
-            autoSwitchStrategy: draft.strategy
+            password: draft.password
         )
         servers.configs.append(server)
         // First server in: make it active so the rest of the app has a
@@ -382,10 +395,7 @@ private struct ServerRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                AutoSwitchConditionBadge(
-                    strategy: server.autoSwitchStrategy,
-                    wifiNames: server.autoSwitchWifiNames
-                )
+                ServerURLClassSummary(urls: server.urls)
             }
             Spacer()
         }
@@ -400,12 +410,18 @@ private struct ServerEditView: View {
     @Binding var trustInsecureCert: Bool
     let ssidProvider: CurrentSSIDProvider
     let existingNames: Set<String>
+    /// Fired when "测试连接" finishes for this (already-persisted) profile —
+    /// the parent seeds the §5.3 live-URL cache with the verdict.
+    var onProbed: ((ProbeSummary) -> Void)? = nil
 
     /// Local edit buffer for the name so we can normalize on commit
     /// (trim → empty becomes nil).
     @State private var nameDraft: String = ""
-    @State private var newSSID: String = ""
-    @State private var test: ConnectionTestState = .idle
+    /// Local edit buffer for the candidate URLs: raw rows (blanks allowed
+    /// mid-edit); only the trimmed non-empty subset is committed, and only
+    /// while it stays non-empty — `ServerConfig.urls` must never persist
+    /// as `[]` (§5.1).
+    @State private var urlsDraft: [String] = [""]
 
     var body: some View {
         Form {
@@ -428,19 +444,10 @@ private struct ServerEditView: View {
                 Text("将显示在剪贴板顶栏。留空会用服务器地址替代。")
             }
 
-            Section {
-                TextField("https://your-server.com:5033/", text: $server.url)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Toggle(isOn: $trustInsecureCert) {
-                    Text("允许不安全证书")
-                }
-            } header: {
-                Text("服务器地址")
-            } footer: {
-                Text("局域网或自签名证书时勾选。此设置全局生效。")
-            }
+            ServerURLsEditorSection(
+                urls: $urlsDraft,
+                trustInsecureCert: $trustInsecureCert
+            )
 
             Section("凭据") {
                 TextField("用户名", text: $server.username)
@@ -449,31 +456,44 @@ private struct ServerEditView: View {
                 SecureField("密码", text: $server.password)
             }
 
-            AutoSwitchSection(
-                strategy: $server.autoSwitchStrategy,
-                ssids: $server.autoSwitchWifiNames,
-                newSSID: $newSSID,
-                ssidProvider: ssidProvider
-            )
-
-            TestConnectionSection(
-                test: $test,
-                trustInsecureCert: trustInsecureCert,
-                url: server.url,
+            TestAllConnectionsSection(
+                urls: urlsDraft,
                 username: server.username,
-                password: server.password
+                password: server.password,
+                trustInsecureCert: trustInsecureCert,
+                network: ssidProvider.networkContext,
+                // Only forward real verdicts: an edit invalidating the UI
+                // gate must not clear the persisted live-URL cache — the
+                // engine's previous verdict is still its best guess.
+                onProbed: { summary in
+                    if let summary { onProbed?(summary) }
+                }
             )
         }
         .navigationTitle(server.displayLabel)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             nameDraft = server.name ?? ""
+            urlsDraft = server.urls.isEmpty ? [""] : server.urls
         }
         .onChange(of: nameDraft) { _, _ in
             // Commit on every keystroke — onDisappear is unreliable when
             // SwiftUI rebuilds the navigation stack mid-edit.
             let trimmed = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             server.name = trimmed.isEmpty ? nil : trimmed
+        }
+        .onChange(of: urlsDraft) { _, _ in
+            // Same per-keystroke commit, filtered: the draft keeps blank
+            // rows for editing comfort, the persisted config only the real
+            // candidates. An all-blank draft leaves the stored urls alone
+            // until something valid shows up.
+            var seen = Set<String>()
+            let cleaned = urlsDraft
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && seen.insert($0).inserted }
+            if !cleaned.isEmpty, cleaned != server.urls {
+                server.urls = cleaned
+            }
         }
     }
 }
@@ -486,20 +506,27 @@ private struct ServerEditView: View {
 struct ServerDraft: Identifiable, Equatable {
     let id: UUID = .init()
     var name: String
-    var url: String
+    /// Raw candidate-URL editor rows (§5.1 `urls`) — blanks allowed while
+    /// typing; commit through `cleanedURLs`.
+    var urls: [String]
     var username: String
     var password: String
-    var ssids: [String]
-    var strategy: AutoSwitchStrategy
 
     init(existingNames: Set<String>, payload: ServerQRPayload? = nil) {
         self.name = payload?.name
             ?? ServerNameGenerator.generate(avoiding: existingNames)
-        self.url = payload?.url ?? ""
+        self.urls = payload?.effectiveURLs ?? [""]
         self.username = payload?.username ?? ""
         self.password = payload?.password ?? ""
-        self.ssids = []
-        self.strategy = .none
+    }
+
+    /// Trimmed, deduplicated, non-empty candidates in row order — what a
+    /// commit actually persists. Empty means "nothing usable typed yet".
+    var cleanedURLs: [String] {
+        var seen = Set<String>()
+        return urls
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 }
 
@@ -514,8 +541,6 @@ struct AddServerSheet: View {
     var onCancel: () -> Void
     var onSave: (ServerDraft) -> Void
 
-    @State private var newSSID: String = ""
-    @State private var test: ConnectionTestState = .idle
     @State private var scannerPresented: Bool = false
 
     init(
@@ -533,7 +558,7 @@ struct AddServerSheet: View {
     }
 
     private var canSave: Bool {
-        !draft.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !draft.cleanedURLs.isEmpty
             && !draft.username.isEmpty
             && !draft.password.isEmpty
     }
@@ -570,19 +595,10 @@ struct AddServerSheet: View {
                     Text("将显示在剪贴板顶栏。留空会用服务器地址替代。")
                 }
 
-                Section {
-                    TextField("https://your-server.com:5033/", text: $draft.url)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Toggle(isOn: $trustInsecureCert) {
-                        Text("允许不安全证书")
-                    }
-                } header: {
-                    Text("服务器地址")
-                } footer: {
-                    Text("局域网或自签名证书时勾选。此设置全局生效。")
-                }
+                ServerURLsEditorSection(
+                    urls: $draft.urls,
+                    trustInsecureCert: $trustInsecureCert
+                )
 
                 Section("凭据") {
                     TextField("用户名", text: $draft.username)
@@ -591,19 +607,12 @@ struct AddServerSheet: View {
                     SecureField("密码", text: $draft.password)
                 }
 
-                AutoSwitchSection(
-                    strategy: $draft.strategy,
-                    ssids: $draft.ssids,
-                    newSSID: $newSSID,
-                    ssidProvider: ssidProvider
-                )
-
-                TestConnectionSection(
-                    test: $test,
-                    trustInsecureCert: trustInsecureCert,
-                    url: draft.url,
+                TestAllConnectionsSection(
+                    urls: draft.urls,
                     username: draft.username,
-                    password: draft.password
+                    password: draft.password,
+                    trustInsecureCert: trustInsecureCert,
+                    network: ssidProvider.networkContext
                 )
             }
             .navigationTitle("添加服务器")
@@ -625,7 +634,7 @@ struct AddServerSheet: View {
                         // it. Username/password always overwrite because
                         // they're typically the reason to scan.
                         if let n = payload.name, draft.name.isEmpty { draft.name = n }
-                        draft.url = payload.url
+                        draft.urls = payload.effectiveURLs
                         draft.username = payload.username
                         draft.password = payload.password
                         scannerPresented = false
@@ -634,265 +643,6 @@ struct AddServerSheet: View {
                 )
             }
         }
-    }
-}
-
-// MARK: - Shared form components
-
-/// Editable SSID list. Add via inline text field or one-tap from the
-/// detected current network, remove via swipe / delete.
-private struct AutoSwitchSection: View {
-    @Binding var strategy: AutoSwitchStrategy
-    @Binding var ssids: [String]
-    @Binding var newSSID: String
-    @Bindable var ssidProvider: CurrentSSIDProvider
-
-    var body: some View {
-        Section {
-            Picker(selection: $strategy) {
-                Label("不自动（仅手动）", systemImage: AutoSwitchStrategy.none.iconName).tag(AutoSwitchStrategy.none)
-                Label("指定 Wi-Fi", systemImage: AutoSwitchStrategy.wifi.iconName).tag(AutoSwitchStrategy.wifi)
-                Label("蜂窝 / 移动数据", systemImage: AutoSwitchStrategy.cellular.iconName).tag(AutoSwitchStrategy.cellular)
-                Label("虚拟网络 (Tailscale)", systemImage: AutoSwitchStrategy.tailscale.iconName).tag(AutoSwitchStrategy.tailscale)
-            } label: {
-                EmptyView()
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
-
-            // SSID list only matters for the Wi-Fi strategy — show it only then.
-            if strategy == .wifi {
-                currentNetworkRow
-
-                ForEach(ssids, id: \.self) { ssid in
-                    Label(ssid, systemImage: "wifi")
-                }
-                .onDelete { indices in
-                    ssids.remove(atOffsets: indices)
-                }
-                HStack {
-                    Image(systemName: "wifi.circle")
-                        .foregroundStyle(.secondary)
-                    TextField("手动添加 WiFi 名称", text: $newSSID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onSubmit(addManualSSID)
-                    if !newSSID.isEmpty {
-                        Button(action: addManualSSID) {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(.tint)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-            }
-        } header: {
-            Text("自动切换")
-        } footer: {
-            Text(Self.footer(for: strategy)).font(.caption)
-        }
-        .task {
-            ssidProvider.refresh()
-        }
-    }
-
-    /// One-line explanation of the selected strategy — what makes this config
-    /// take over, in plain language.
-    private static func footer(for strategy: AutoSwitchStrategy) -> String {
-        switch strategy {
-        case .none:      return String(localized: "此配置只在你手动选择时使用，不随网络自动切换。")
-        case .wifi:      return String(localized: "连接到下面任一 Wi-Fi 时，自动切换到此配置。")
-        case .cellular:  return String(localized: "使用蜂窝 / 移动数据时，自动切换到此配置。")
-        case .tailscale: return String(localized: "开启 Tailscale 虚拟网络时，自动切换到此配置（优先级最高，会压过 Wi-Fi）。")
-        }
-    }
-
-    /// Header row showing the system's currently-connected SSID, with a
-    /// one-tap "添加" button. Renders different states for: undetermined
-    /// auth (with a "授权" button), denied (link to Settings), and
-    /// unavailable (simulator — silently hidden so manual entry still
-    /// works without confusing affordances).
-    @ViewBuilder
-    private var currentNetworkRow: some View {
-        switch ssidProvider.authState {
-        case .unavailable:
-            EmptyView()
-        case .notDetermined:
-            HStack(spacing: 10) {
-                Image(systemName: "location.circle")
-                    .foregroundStyle(.tint)
-                Text("授权位置以读取当前 WiFi")
-                    .font(.callout)
-                Spacer()
-                Button("授权") { ssidProvider.requestAuthorization() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
-        case .denied:
-            HStack(spacing: 10) {
-                Image(systemName: "location.slash")
-                    .foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("位置权限未授予")
-                        .font(.callout)
-                    Text("在系统设置中开启「位置」权限以读取当前 WiFi")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("打开设置") { openSystemSettings() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
-        case .authorized:
-            HStack(spacing: 10) {
-                Image(systemName: "wifi")
-                    .foregroundStyle(.tint)
-                if let ssid = ssidProvider.currentSSID {
-                    Text(ssid)
-                        .font(.callout.weight(.semibold))
-                    Spacer()
-                    if ssids.contains(ssid) {
-                        Label("已添加", systemImage: "checkmark.circle.fill")
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(.green)
-                    } else {
-                        Button("添加") { ssids.append(ssid) }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-                } else {
-                    Text("未连接 WiFi")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        ssidProvider.refresh()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                }
-            }
-        }
-    }
-
-    private func addManualSSID() {
-        guard let normalized = ServerConfig.normalizeSSID(newSSID) else { return }
-        if !ssids.contains(normalized) {
-            ssids.append(normalized)
-        }
-        newSSID = ""
-    }
-
-    private func openSystemSettings() {
-        #if canImport(UIKit)
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url)
-        }
-        #endif
-    }
-}
-
-private enum ConnectionTestState: Equatable {
-    case idle
-    case connecting
-    case success
-    case authFailed
-    case unreachable
-    case missingFields
-
-    init(_ result: ConnectionTester.Result) {
-        switch result {
-        case .success:        self = .success
-        case .authFailed:     self = .authFailed
-        case .unreachable:    self = .unreachable
-        case .missingFields:  self = .missingFields
-        }
-    }
-}
-
-private struct TestConnectionSection: View {
-    @Binding var test: ConnectionTestState
-    let trustInsecureCert: Bool
-    let url: String
-    let username: String
-    let password: String
-
-    var body: some View {
-        Section {
-            statusRow
-
-            Button {
-                Task { await runTest() }
-            } label: {
-                HStack {
-                    if test == .connecting {
-                        ProgressView().controlSize(.small)
-                        Text("正在连接…")
-                    } else {
-                        Image(systemName: "bolt.horizontal.circle")
-                        Text("测试连接")
-                    }
-                    Spacer()
-                }
-            }
-            .disabled(test == .connecting)
-        } header: {
-            Text("连接")
-        }
-    }
-
-    @ViewBuilder
-    private var statusRow: some View {
-        switch test {
-        case .idle, .connecting:
-            EmptyView()
-        case .success:
-            Label {
-                Text("已连接 — 服务器可达")
-            } icon: {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
-        case .authFailed:
-            Label {
-                Text("认证失败 — 检查用户名和密码")
-            } icon: {
-                Image(systemName: "lock.trianglebadge.exclamationmark.fill")
-                    .foregroundStyle(.red)
-            }
-        case .unreachable:
-            Label {
-                Text("无法连接 — 检查 URL 和网络")
-            } icon: {
-                Image(systemName: "wifi.exclamationmark")
-                    .foregroundStyle(.orange)
-            }
-        case .missingFields:
-            Label {
-                Text("请填写 URL、用户名和密码")
-            } icon: {
-                Image(systemName: "exclamationmark.circle")
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func runTest() async {
-        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedURL.isEmpty || username.isEmpty || password.isEmpty {
-            test = .missingFields
-            return
-        }
-        test = .connecting
-        let result = await ConnectionTester.test(
-            url: url,
-            username: username,
-            password: password,
-            trustInsecureCert: trustInsecureCert
-        )
-        test = ConnectionTestState(result)
     }
 }
 

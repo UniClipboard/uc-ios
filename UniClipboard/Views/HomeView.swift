@@ -1170,14 +1170,14 @@ private struct ServerSwitcherSheet: View {
 
     private func commitDraft(_ draft: ServerDraft) {
         let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let urls = draft.cleanedURLs
+        guard !urls.isEmpty else { return }   // AddServerSheet's canSave gates this
         let server = ServerConfig(
             id: UUID().uuidString.lowercased(),
             name: trimmedName.isEmpty ? nil : trimmedName,
-            url: draft.url.trimmingCharacters(in: .whitespacesAndNewlines),
+            urls: urls,
             username: draft.username,
-            password: draft.password,
-            autoSwitchWifiNames: draft.ssids,
-            autoSwitchStrategy: draft.strategy
+            password: draft.password
         )
         var list = vm.servers
         list.configs.append(server)
@@ -1208,10 +1208,7 @@ private struct ServerSwitcherRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                AutoSwitchConditionBadge(
-                    strategy: server.autoSwitchStrategy,
-                    wifiNames: server.autoSwitchWifiNames
-                )
+                ServerURLClassSummary(urls: server.urls)
             }
             Spacer()
         }
