@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "app.uniclipboard", category: "store")
 
 /// Persists `ServerConfigList` and `AppSettings` under the keys defined in
 /// `AppSettings.PersistenceKey` (spec: `docs/SYNC_PROTOCOL.md` §5.4, §5.5).
@@ -122,10 +125,15 @@ public final class SettingsStore: @unchecked Sendable {
             return
         }
         let standard = UserDefaults.standard
+        var migrated = 0
         for key in keys {
             guard let value = standard.object(forKey: key) else { continue }
             suite.set(value, forKey: key)
             standard.removeObject(forKey: key)
+            migrated += 1
+        }
+        if migrated > 0 {
+            log.info("migrateFromStandardIfNeeded: moved \(migrated, privacy: .public) keys from .standard to the App Group suite")
         }
     }
 
@@ -169,6 +177,10 @@ public final class SettingsStore: @unchecked Sendable {
             if let list = try? decoder.decode(ServerConfigList.self, from: data) {
                 return list
             }
+            // Corruption policy returns the empty default — but losing the
+            // whole server list is the worst silent failure this store can
+            // produce, so leave a loud trace.
+            log.fault("loadServers: server_config_list blob (\(data.count, privacy: .public) bytes) failed to decode — returning empty list")
             return ServerConfigList()
         }
 
@@ -177,6 +189,7 @@ public final class SettingsStore: @unchecked Sendable {
             let migrated = legacy.migrated()
             saveServers(migrated)
             defaults.removeObject(forKey: AppSettings.PersistenceKey.legacyServerConfig)
+            log.info("loadServers: migrated legacy server_config to server_config_list (§5.5)")
             return migrated
         }
 
@@ -194,7 +207,11 @@ public final class SettingsStore: @unchecked Sendable {
         guard let data = defaults.data(forKey: AppSettings.PersistenceKey.appSettings) else {
             return .defaults
         }
-        return (try? decoder.decode(AppSettings.self, from: data)) ?? .defaults
+        if let settings = try? decoder.decode(AppSettings.self, from: data) {
+            return settings
+        }
+        log.fault("loadAppSettings: app_settings blob (\(data.count, privacy: .public) bytes) failed to decode — using defaults")
+        return .defaults
     }
 
     public func saveAppSettings(_ settings: AppSettings) {

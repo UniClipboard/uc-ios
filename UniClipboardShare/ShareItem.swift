@@ -28,6 +28,15 @@ enum ShareItem: Equatable {
         case .file(_, let b):           return b.count
         }
     }
+
+    /// Content-free case name for logging/telemetry — never the payload.
+    var kindLabel: String {
+        switch self {
+        case .text:  return "text"
+        case .image: return "image"
+        case .file:  return "file"
+        }
+    }
 }
 
 /// Pulls one `ShareItem` out of the system share sheet attachments. Tries

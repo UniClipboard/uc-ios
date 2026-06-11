@@ -1,5 +1,8 @@
 import Foundation
 import Intents
+import OSLog
+
+private let log = Logger(subsystem: "app.uniclipboard", category: "intents")
 
 /// Donates `INSendMessageIntent` interactions so iOS Sharing Suggestions
 /// surfaces our servers as top-row "contact" tiles on the share sheet.
@@ -54,9 +57,7 @@ public enum ShareIntentDonation {
         } catch {
             // Best-effort. Don't surface to the user — the upload itself
             // already succeeded.
-            #if DEBUG
-            print("[ShareIntentDonation] donate failed: \(error)")
-            #endif
+            log.warning("donateSend: donation failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -75,9 +76,9 @@ public enum ShareIntentDonation {
     /// on the share sheet.
     public static func deleteAllDonations(forServerId serverId: String) {
         INInteraction.delete(with: serverId) { error in
-            #if DEBUG
-            if let error { print("[ShareIntentDonation] delete failed: \(error)") }
-            #endif
+            if let error {
+                log.warning("deleteAllDonations: delete failed: \(String(describing: error), privacy: .public)")
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import OSLog
+import SentryWithoutUIKit
 
 private let log = Logger(subsystem: "app.uniclipboard", category: "sync")
 
@@ -494,11 +495,13 @@ final class SyncEngine {
             // network reverts to 1Hz cadence on the next sleep.
             if consecutiveFailures > 0 {
                 log.info("tick: recovered after \(self.consecutiveFailures, privacy: .public) failures, state=\(String(describing: self.state), privacy: .public)")
+                SentrySDK.logger.info("sync recovered", attributes: ["failedTicks": consecutiveFailures])
             }
             consecutiveFailures = 0
             nextNetworkAttemptAt = nil
         } catch let e as SyncError where e.kind == .authFailed {
             log.error("tick: auth failed, stopping loop")
+            SentrySDK.logger.warn("sync auth failed (401), polling paused")
             state = .authFailed
             lastError = e
             stop()
@@ -506,6 +509,14 @@ final class SyncEngine {
             consecutiveFailures += 1
             nextNetworkAttemptAt = Date().addingTimeInterval(currentBackoffSeconds())
             log.error("tick: SyncError kind=\(String(describing: e.kind), privacy: .public) consecutiveFailures=\(self.consecutiveFailures, privacy: .public) underlying=\(e.underlying ?? "nil", privacy: .public)")
+            // Mirror only the offline TRANSITION to Sentry — each backoff
+            // retry repeats the same failure and would just be log spam.
+            if consecutiveFailures == 1 {
+                SentrySDK.logger.warn(
+                    "sync went offline",
+                    attributes: ["errorKind": String(describing: e.kind)]
+                )
+            }
             state = .offlineRetrying
             lastError = e
             // A network-shaped failure may mean the *URL* died, not the
@@ -525,6 +536,11 @@ final class SyncEngine {
             consecutiveFailures += 1
             nextNetworkAttemptAt = Date().addingTimeInterval(currentBackoffSeconds())
             log.error("tick: unexpected error consecutiveFailures=\(self.consecutiveFailures, privacy: .public): \(String(describing: error), privacy: .public)")
+            // Non-SyncError out of the tick is bug-grade — every expected
+            // failure mode is mapped to SyncError upstream.
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "sync-tick", key: "path")
+            }
             state = .offlineRetrying
             lastError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
             vm.kickLiveEndpointRefresh()
@@ -871,6 +887,13 @@ final class SyncEngine {
     /// no-op. Recovery is `acknowledgeLoopDetection()` from the UI.
     private func tripLoopBreaker() {
         guard state != .loopDetected else { return }
+        log.error("loop breaker tripped — suspending sync until user acknowledges")
+        // The loop guard tripping means our apply/push dedup failed —
+        // that's a logic bug worth an issue, not just a log line.
+        SentrySDK.capture(message: "sync loop breaker tripped") { scope in
+            scope.setLevel(.warning)
+            scope.setTag(value: "sync-loop-guard", key: "path")
+        }
         state = .loopDetected
         lastError = SyncError(
             kind: .networkUnreachable,

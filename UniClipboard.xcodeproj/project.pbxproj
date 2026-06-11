@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		4DB1000C2FB1E000B8F901 /* UniClipboardShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4DB100012FB1E000B8F901 /* UniClipboardShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4DC2000C2FC1F000B8F901 /* UniClipboardKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4DC200012FC1F000B8F901 /* UniClipboardKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4DD300042FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4DD300022FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */; };
+		4DD300052FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4DD300032FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,6 +102,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4DD300042FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -107,6 +110,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4DD300052FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -166,6 +170,7 @@
 			);
 			name = UniClipboard;
 			packageProductDependencies = (
+				4DD300022FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */,
 			);
 			productName = UniClipboard;
 			productReference = 4D479E0B2FAEAE5B00B8F825 /* UniClipboard.app */;
@@ -189,6 +194,7 @@
 			);
 			name = UniClipboardShare;
 			packageProductDependencies = (
+				4DD300032FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */,
 			);
 			productName = UniClipboardShare;
 			productReference = 4DB100012FB1E000B8F901 /* UniClipboardShare.appex */;
@@ -248,6 +254,9 @@
 			);
 			mainGroup = 4D479E022FAEAE5B00B8F825;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4D479E0C2FAEAE5B00B8F825 /* Products */;
 			projectDirPath = "";
@@ -700,6 +709,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.15.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4DD300022FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = "Sentry-WithoutUIKitOrAppKit";
+		};
+		4DD300032FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = "Sentry-WithoutUIKitOrAppKit";
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4D479E032FAEAE5B00B8F825 /* Project object */;
 }

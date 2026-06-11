@@ -1,5 +1,9 @@
 import SwiftUI
 import UIKit
+import OSLog
+import SentryWithoutUIKit
+
+private let log = Logger(subsystem: "app.uniclipboard", category: "share")
 
 /// The Share Extension's only screen. Loads the shared payload, lets the
 /// user confirm which server to push to (if more than one is configured),
@@ -292,11 +296,13 @@ struct ShareRootView: View {
         }
 
         guard let ctx = context else {
+            log.error("loadEverything: no extension context")
             phase = .failed(String(localized: "没有可分享的内容"))
             return
         }
         do {
             let extracted = try await ShareItemExtractor.extract(from: ctx)
+            log.info("loadEverything: extracted \(extracted.kindLabel, privacy: .public) bytes=\(extracted.byteCount, privacy: .public)")
             item = extracted
             // Direct-share fast path: the user already told iOS which
             // server to use, so skip the picker entirely. `send()` sets
@@ -307,6 +313,14 @@ struct ShareRootView: View {
                 phase = .ready
             }
         } catch {
+            // The activation rule matched but extraction failed — the
+            // source app advertised a UTI it couldn't fulfill, or our
+            // extractor has a gap. Bug-grade either way.
+            log.error("loadEverything: extraction failed: \(String(describing: error), privacy: .public)")
+            SentrySDK.logger.error(
+                "share extraction failed",
+                attributes: ["error": String(describing: error)]
+            )
             phase = .failed((error as? LocalizedError)?.errorDescription ?? "\(error)")
         }
     }
@@ -332,8 +346,19 @@ struct ShareRootView: View {
         do {
             let uploader = ShareUploader()
             try await uploader.upload(item, to: server, trustInsecureCert: trustInsecureCert)
+            log.info("send: upload succeeded \(item.kindLabel, privacy: .public) bytes=\(item.byteCount, privacy: .public)")
+            SentrySDK.logger.info(
+                "share upload succeeded",
+                attributes: ["kind": item.kindLabel, "bytes": item.byteCount]
+            )
             phase = .succeeded
         } catch {
+            let kind = (error as? SyncError).map { String(describing: $0.kind) } ?? String(describing: type(of: error))
+            log.error("send: upload failed \(kind, privacy: .public): \(String(describing: error), privacy: .private)")
+            SentrySDK.logger.error(
+                "share upload failed",
+                attributes: ["errorKind": kind, "kind": item.kindLabel, "bytes": item.byteCount]
+            )
             let msg = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             phase = .failed(msg)
         }

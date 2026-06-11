@@ -467,6 +467,7 @@ final class KeyboardModel {
             }
         } catch {
             guard gen == syncGeneration else { return }
+            log.error("sync: failed — \(String(describing: error))")
             lastError = Self.message(for: error)
             flashSync(.failure)
         }
@@ -751,6 +752,7 @@ final class KeyboardModel {
                 if Task.isCancelled { return nil }
                 store.saveImageData(hash: hash, data: data)
             } catch {
+                log.error("thumbnail: getFile failed — \(String(describing: error))")
                 return nil
             }
         }

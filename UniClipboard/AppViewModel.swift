@@ -1,5 +1,9 @@
 import Foundation
 import Observation
+import OSLog
+import SentryWithoutUIKit
+
+private let log = Logger(subsystem: "app.uniclipboard", category: "app")
 
 /// Owns the app's persisted state and writes mutations back to disk
 /// automatically. Sits between the views and `SettingsStore`.
@@ -269,6 +273,7 @@ final class AppViewModel {
     func reconcileActiveServer() {
         let newId = activeServer?.id
         guard newId != lastEffectiveServerId else { return }
+        log.info("reconcileActiveServer: effective server \(self.lastEffectiveServerId ?? "nil", privacy: .public) → \(newId ?? "nil", privacy: .public)")
         lastEffectiveServerId = newId
         // Different profile → its live URL is whatever the last probe
         // persisted for *it* (possibly from a prior launch). Hydrate the
@@ -361,6 +366,9 @@ final class AppViewModel {
             // The user switched profiles while the probe was in flight —
             // these results describe the old profile's candidates.
             guard self.servers.activeConfig?.id == base.id else { return }
+            if self.liveURL != picked {
+                log.info("liveProbe: live URL changed → \(picked ?? "none reachable", privacy: .private)")
+            }
             self.store.saveLiveURL(configId: base.id, picked)
             if self.liveURL != picked { self.liveURL = picked }
         }
@@ -384,6 +392,8 @@ final class AppViewModel {
             pendingImport = payload
             importError = nil
         } catch let e as ConnectURI.ParseError {
+            // .private: the raw URI / parse detail can embed credentials.
+            log.warning("handleIncomingURL: connect URI parse failed: \(String(describing: e), privacy: .private)")
             pendingImport = nil
             importError = e
         } catch {
@@ -542,6 +552,14 @@ final class AppViewModel {
             try await client.putClipboard(entry)
             serverLatest = entry
         } catch {
+            // Best-effort by design (the local re-apply already succeeded),
+            // but a silent return left no trace at all when other devices
+            // never received the re-applied entry.
+            log.error("pushHistoryEntryToServer: failed type=\(entry.type.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            SentrySDK.logger.warn(
+                "history re-push failed",
+                attributes: ["type": entry.type.rawValue]
+            )
             return
         }
 
@@ -712,9 +730,11 @@ final class AppViewModel {
                 applyError = nil
                 return true
             } catch let e as SyncError {
+                log.error("applyServerToDevice: \(String(describing: e.kind), privacy: .public): \(e.underlying ?? "", privacy: .private)")
                 applyError = e
                 throw e
             } catch {
+                log.error("applyServerToDevice: unexpected: \(String(describing: error), privacy: .public)")
                 let wrapped = SyncError(kind: .networkUnreachable, underlying: "\(error)")
                 applyError = wrapped
                 throw wrapped
@@ -735,9 +755,11 @@ final class AppViewModel {
                 applyError = nil
                 return true
             } catch let e as SyncError {
+                log.error("applyServerToDevice: \(String(describing: e.kind), privacy: .public): \(e.underlying ?? "", privacy: .private)")
                 applyError = e
                 throw e
             } catch {
+                log.error("applyServerToDevice: unexpected: \(String(describing: error), privacy: .public)")
                 let wrapped = SyncError(kind: .networkUnreachable, underlying: "\(error)")
                 applyError = wrapped
                 throw wrapped
@@ -783,8 +805,10 @@ final class AppViewModel {
             lastAppliedAttachmentName = dataName
             applyError = nil
         } catch let e as SyncError {
+            log.error("applyAttachment: \(String(describing: e.kind), privacy: .public): \(e.underlying ?? "", privacy: .private)")
             applyError = e
         } catch {
+            log.error("applyAttachment: unexpected: \(String(describing: error), privacy: .public)")
             applyError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
         }
     }
@@ -866,8 +890,10 @@ final class AppViewModel {
             lastSavedFileURL = url
             saveError = nil
         } catch let e as SyncError {
+            log.error("saveAttachment: \(String(describing: e.kind), privacy: .public): \(e.underlying ?? "", privacy: .private)")
             saveError = e
         } catch {
+            log.error("saveAttachment: unexpected: \(String(describing: error), privacy: .public)")
             saveError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
         }
     }
@@ -897,8 +923,10 @@ final class AppViewModel {
             lastSavedFileURL = url
             saveError = nil
         } catch let e as SyncError {
+            log.error("saveAttachment: \(String(describing: e.kind), privacy: .public): \(e.underlying ?? "", privacy: .private)")
             saveError = e
         } catch {
+            log.error("saveAttachment: unexpected: \(String(describing: error), privacy: .public)")
             saveError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
         }
     }
@@ -1070,6 +1098,13 @@ final class AppViewModel {
         guard Clipboard.hashMatches(expected: entry.hash, actual: actual) else {
             let expected = entry.hash ?? "<nil>"
             let name = entry.dataName ?? "<nil>"
+            // §4.4 failure = corrupted transfer or a server-side bug —
+            // content-free attributes only (no name/hash) toward Sentry.
+            log.error("verify: hash mismatch type=\(entry.type.rawValue, privacy: .public) bytes=\(bytes.count, privacy: .public)")
+            SentrySDK.logger.error(
+                "payload hash verification failed",
+                attributes: ["type": entry.type.rawValue, "bytes": bytes.count]
+            )
             throw SyncError(
                 kind: .hashMismatch,
                 underlying: "expected=\(expected) actual=\(actual) name=\(name) bytes=\(bytes.count)"
@@ -1196,9 +1231,11 @@ extension AppViewModel {
             refreshError = nil
             return entry
         } catch let e as SyncError {
+            log.error("pushSnapshot: \(String(describing: e.kind), privacy: .public) type=\(entry.type.rawValue, privacy: .public): \(e.underlying ?? "", privacy: .private)")
             pushError = e
             throw e
         } catch {
+            log.error("pushSnapshot: unexpected type=\(entry.type.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
             let wrapped = SyncError(kind: .networkUnreachable, underlying: "\(error)")
             pushError = wrapped
             throw wrapped
@@ -1234,8 +1271,10 @@ extension AppViewModel {
             lastSyncedAt = .now
             refreshError = nil
         } catch let e as SyncError {
+            log.error("refresh: \(String(describing: e.kind), privacy: .public): \(e.underlying ?? "", privacy: .private)")
             refreshError = e
         } catch {
+            log.error("refresh: unexpected: \(String(describing: error), privacy: .public)")
             refreshError = SyncError(kind: .networkUnreachable, underlying: "\(error)")
         }
     }

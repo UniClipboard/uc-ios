@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "app.uniclipboard", category: "share")
 
 /// Uploads a single `ShareItem` to the active SyncClipboard server.
 /// Lives in the Share Extension target — owns the §3.5 file-first PUT
@@ -21,9 +24,11 @@ struct ShareUploader {
     func upload(_ item: ShareItem, to server: ServerConfig, trustInsecureCert: Bool) async throws {
         let client = try SyncClipboardClient(server: server, trustInsecureCert: trustInsecureCert)
         let (entry, payload) = build(from: item)
+        log.info("upload: start \(item.kindLabel, privacy: .public) bytes=\(item.byteCount, privacy: .public) hasData=\(entry.hasData, privacy: .public)")
 
         if entry.hasData, let payload, let name = entry.dataName {
             try await client.putFile(name: name, body: payload)
+            log.debug("upload: §3.5 file PUT done")
             if let hash = entry.hash, !hash.isEmpty {
                 let profileId = HistoryRecord.profileId(type: entry.type, hash: hash)
                 try? await PayloadCache.shared.write(profileId: profileId, bytes: payload)
@@ -42,6 +47,7 @@ struct ShareUploader {
             store.saveLastSyncedHash(hash)
         }
         try await client.putClipboard(entry)
+        log.info("upload: metadata PUT done, watermark advanced")
 
         // Surface the push in the shared history log so it shows up in the
         // main app's Home list. The app's SyncEngine won't log it on its own —

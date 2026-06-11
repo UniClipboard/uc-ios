@@ -63,12 +63,11 @@ public final class SyncClipboardClient: @unchecked Sendable {
         req.setValue(authHeader, forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await perform(req)
-        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
-            throw err
-        }
+        try checkStatus(response, op: "getClipboard")
         do {
             return try JSONDecoder().decode(Clipboard.self, from: data)
         } catch {
+            log.error("getClipboard: decode failed (\(data.count, privacy: .public) bytes): \(String(describing: error), privacy: .public)")
             throw SyncError(kind: .decodingFailed, underlying: "\(error)")
         }
     }
@@ -89,9 +88,7 @@ public final class SyncClipboardClient: @unchecked Sendable {
             throw SyncError(kind: .decodingFailed, underlying: "\(error)")
         }
         let (_, response) = try await perform(req)
-        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
-            throw err
-        }
+        try checkStatus(response, op: "putClipboard")
     }
 
     /// `GET file/<name>` — download payload bytes. Spec §2.4.
@@ -111,9 +108,7 @@ public final class SyncClipboardClient: @unchecked Sendable {
         req.httpMethod = "GET"
         req.setValue(authHeader, forHTTPHeaderField: "Authorization")
         let (data, response) = try await perform(req)
-        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
-            throw err
-        }
+        try checkStatus(response, op: "getFile")
         return data
     }
 
@@ -141,9 +136,7 @@ public final class SyncClipboardClient: @unchecked Sendable {
         req.httpMethod = "GET"
         req.setValue(authHeader, forHTTPHeaderField: "Authorization")
         let (data, response) = try await perform(req)
-        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
-            throw err
-        }
+        try checkStatus(response, op: "getHistoryPayload")
         return data
     }
 
@@ -171,12 +164,11 @@ public final class SyncClipboardClient: @unchecked Sendable {
         req.httpBody = body.encoded()
 
         let (data, response) = try await perform(req)
-        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
-            throw err
-        }
+        try checkStatus(response, op: "queryHistory")
         do {
             return try JSONDecoder().decode([HistoryRecord].self, from: data)
         } catch {
+            log.error("queryHistory: decode failed (\(data.count, privacy: .public) bytes): \(String(describing: error), privacy: .public)")
             throw SyncError(kind: .decodingFailed, underlying: "\(error)")
         }
     }
@@ -198,12 +190,26 @@ public final class SyncClipboardClient: @unchecked Sendable {
         req.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
         req.httpBody = body
         let (_, response) = try await perform(req)
-        if let err = SyncError.mapHTTPStatus((response as? HTTPURLResponse)?.statusCode ?? -1) {
-            throw err
-        }
+        try checkStatus(response, op: "putFile")
     }
 
     // MARK: - Internals
+
+    /// Map non-2xx statuses to `SyncError` and log them — HTTP-level
+    /// failures (401/404/5xx) previously threw without a trace, leaving
+    /// only the caller's aggregated state to debug from.
+    private func checkStatus(_ response: URLResponse, op: StaticString) throws {
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard let err = SyncError.mapHTTPStatus(status) else { return }
+        // 404 on GETs is the documented "empty server" state — routine,
+        // not error-worthy.
+        if err.kind == .notFound {
+            log.debug("\(op, privacy: .public): HTTP \(status, privacy: .public) (not found)")
+        } else {
+            log.error("\(op, privacy: .public): HTTP \(status, privacy: .public) → \(String(describing: err.kind), privacy: .public)")
+        }
+        throw err
+    }
 
     private func perform(_ req: URLRequest, attempt: Int = 1) async throws -> (Data, URLResponse) {
         do {

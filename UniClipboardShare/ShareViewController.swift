@@ -11,6 +11,8 @@ final class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        SentryBootstrap.start()
+
         let context = self.extensionContext
         // If the user tapped a Sharing-Suggestions tile (the "contact" row
         // we donate via INSendMessageIntent), iOS hands us the original

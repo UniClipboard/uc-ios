@@ -21,6 +21,12 @@ struct UniClipboardApp: App {
 
     @State private var vm = AppViewModel()
 
+    init() {
+        // Must run before any other code so the crash handler covers the
+        // whole launch (including AppViewModel/SyncEngine construction).
+        SentryBootstrap.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView(vm: vm)
