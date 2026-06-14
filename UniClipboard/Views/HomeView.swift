@@ -96,9 +96,15 @@ struct HomeView: View {
         return items
     }
 
-    private let twoFlexibleColumns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
+    /// Adaptive grid columns: fit as many cards of ~160–210pt as the width
+    /// allows, instead of a hard-coded two columns. On every iPhone width
+    /// (375–430pt) this still resolves to exactly two ~170pt cards — the same
+    /// layout as before — but on iPad / regular-width windows it packs 4–6
+    /// columns so each square card stays phone-sized instead of ballooning to
+    /// half the (much wider) screen. `minimum: 160` is chosen so the narrowest
+    /// iPhone (375pt) keeps two columns; the 210 cap prevents over-stretch.
+    private let adaptiveColumns = [
+        GridItem(.adaptive(minimum: 160, maximum: 210), spacing: 12)
     ]
 
     // MARK: - Body
@@ -310,7 +316,7 @@ struct HomeView: View {
             }
         } else {
             ScrollView(.vertical) {
-                LazyVGrid(columns: twoFlexibleColumns, spacing: 12) {
+                LazyVGrid(columns: adaptiveColumns, spacing: 12) {
                     ForEach(displayedHistory) { item in
                         cardCell(for: item)
                     }
